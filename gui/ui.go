@@ -42,7 +42,7 @@ func (u *ui) Init() error {
 	u.logLifecycle()
 	u.makeMenu()
 
-	content := container.NewMax()
+	content := container.NewStack()
 	tabs := container.NewDocTabs()
 	content.Add(tabs)
 	welcomePage := pages.WelcomePage{}
@@ -65,7 +65,9 @@ func (u *ui) Init() error {
 		tabs.Refresh()
 	}
 	navPage := pages.NewNav(u.mainWindow, u.KuCli, func(namespace string) {
-
+		addTabFn(namespace, func(ctx context.Context) fyne.CanvasObject {
+			return pages.NewNamespace(u.mainWindow, u.KuCli, namespace, addTabFn).Build(ctx)
+		})
 	}, func(pod *v1.Pod) {
 		addTabFn(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
 			return pages.NewPodPage(u.KuCli, pod, addTabFn).Build(ctx)

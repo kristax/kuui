@@ -165,8 +165,8 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 				tree.CloseBranch(uid)
 			} else {
 				tree.OpenBranch(uid)
+				u.onNamespaceSelected(uid)
 			}
-			u.onNamespaceSelected(uid)
 		}
 		tree.Unselect(uid)
 	}
