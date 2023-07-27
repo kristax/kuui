@@ -48,7 +48,7 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 	tbiClear := widget.NewToolbarAction(theme.DeleteIcon(), nil)
 
 	txtLine := widgets.NewNumericalEntry()
-	searchBorder := container.NewBorder(nil, nil, nil, txtLine, txtSearch)
+	searchBorder := container.NewBorder(nil, nil, nil, container.NewHBox(widget.NewLabel("tail"), txtLine), txtSearch)
 	titleBox := container.NewBorder(nil, nil, nil, toolbar, searchBorder)
 
 	p.txtLog = widget.NewMultiLineEntry()
