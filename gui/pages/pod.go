@@ -44,7 +44,7 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 	toolbar := widget.NewToolbar(widget.NewToolbarSeparator())
 	tbiPause := widget.NewToolbarAction(theme.MediaPauseIcon(), nil)
 	tbiDelete := widget.NewToolbarAction(theme.MediaStopIcon(), nil)
-	tbiRefresh := widget.NewToolbarAction(theme.ViewRefreshIcon(), nil)
+	//tbiRefresh := widget.NewToolbarAction(theme.ViewRefreshIcon(), nil)
 	tbiClear := widget.NewToolbarAction(theme.DeleteIcon(), nil)
 
 	txtLine := widgets.NewNumericalEntry()
@@ -52,7 +52,14 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 	titleBox := container.NewBorder(nil, nil, nil, toolbar, searchBorder)
 
 	p.txtLog = widget.NewMultiLineEntry()
-	p.frameLogDetail = container.NewBorder(nil, nil, nil, nil, p.txtLog)
+	tbLogDetail := widget.NewToolbar(widget.NewToolbarAction(theme.ContentCutIcon(), func() {
+		s, err := cutJson(p.txtLog.Text)
+		if err != nil {
+			return
+		}
+		p.txtLog.SetText(s)
+	}))
+	p.frameLogDetail = container.NewBorder(tbLogDetail, nil, nil, nil, p.txtLog)
 
 	border := container.NewBorder(titleBox, nil, nil, nil, p.vScroll)
 
@@ -113,10 +120,10 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 		toolbar.Append(tbiPause)
 
 		//refresh
-		tbiRefresh.OnActivated = func() {
-			p.Build(ctx)
-		}
-		toolbar.Append(tbiRefresh)
+		//tbiRefresh.OnActivated = func() {
+		//	p.Build(ctx)
+		//}
+		//toolbar.Append(tbiRefresh)
 
 		//delete
 		tbiDelete.OnActivated = func() {
@@ -174,6 +181,7 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 				p.list.Remove(p.list.Objects[0])
 			}
 			p.AddItem(log)
+			fmt.Println(log)
 		}
 	}()
 
@@ -193,11 +201,12 @@ func (p *PodPage) AddItem(txt string) {
 	}
 	content.Wrapping = fyne.TextWrapWord
 	content.OnTapped = func() {
-		var formatted = formatLog(txt)
-		p.txtLog.SetText(formatted)
-
+		var formatted, err = formatLog(txt)
+		if err != nil {
+			return
+		}
 		p.addTabFn("L:"+p.pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			p.txtLog.SetText(txt)
+			p.txtLog.SetText(formatted)
 			return p.frameLogDetail
 		})
 	}
@@ -210,21 +219,39 @@ func (p *PodPage) addItem(object fyne.CanvasObject) {
 	p.vScroll.ScrollToBottom()
 }
 
-func formatLog(txt string) string {
+func formatLog(txt string) (string, error) {
 	var formatted = txt
 	if strings.HasPrefix(formatted, "{") {
 		var m = make(map[string]interface{})
 		err := json.Unmarshal([]byte(formatted), &m)
 		if err != nil {
 			fyne.LogError("", err)
-			return err.Error()
+			return "", err
 		}
 		bytes, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {
 			fyne.LogError("", err)
-			return err.Error()
+			return "", err
 		}
 		formatted = string(bytes)
 	}
-	return formatted
+	return formatted, nil
+}
+
+func cutJson(s string) (string, error) {
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start == -1 || end == -1 {
+		return s, nil
+	}
+	s = s[start+1 : end]
+	start = strings.Index(s, "{")
+	end = strings.LastIndex(s, "}")
+	if start == -1 || end == -1 {
+		return s, nil
+	}
+	s = s[start : end+1]
+	s = strings.ReplaceAll(s, `\"`, `"`)
+	s = strings.ReplaceAll(s, `\n`, ``)
+	return formatLog(s)
 }

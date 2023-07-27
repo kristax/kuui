@@ -39,7 +39,7 @@ func (u *ui) Run() error {
 
 func (u *ui) Init() error {
 	u.makeTray()
-	u.logLifecycle()
+	//u.logLifecycle()
 	u.makeMenu()
 
 	content := container.NewStack()
