@@ -203,19 +203,15 @@ func (p *PodPage) AddItem(txt string) {
 	content.OnTapped = func() {
 		var formatted, err = formatLog(txt)
 		if err != nil {
+			p.txtLog.SetText(txt)
 			return
 		}
+		p.txtLog.SetText(formatted)
 		p.addTabFn("L:"+p.pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			p.txtLog.SetText(formatted)
 			return p.frameLogDetail
 		})
 	}
 	p.list.Add(content)
-	p.vScroll.ScrollToBottom()
-}
-
-func (p *PodPage) addItem(object fyne.CanvasObject) {
-	p.list.Add(object)
 	p.vScroll.ScrollToBottom()
 }
 
