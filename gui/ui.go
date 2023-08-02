@@ -5,12 +5,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/theme"
 	"github.com/kristax/kuui/gui/pages"
 	"github.com/kristax/kuui/kucli"
 	v1 "k8s.io/api/core/v1"
-	"log"
 )
 
 type ui struct {
@@ -38,15 +35,12 @@ func (u *ui) Run() error {
 }
 
 func (u *ui) Init() error {
-	u.makeTray()
+	//u.makeTray()
 	//u.logLifecycle()
 	u.makeMenu()
 
 	content := container.NewStack()
 	tabs := container.NewDocTabs()
-	content.Add(tabs)
-	welcomePage := pages.WelcomePage{}
-	tabs.Append(container.NewTabItem("Welcome", welcomePage.Build()))
 
 	var existTabItems = make(map[string]*tabContent)
 	var addTabFn = func(name string, content func(ctx context.Context) fyne.CanvasObject) {
@@ -64,6 +58,11 @@ func (u *ui) Init() error {
 		tabs.Select(tc.Item)
 		tabs.Refresh()
 	}
+
+	welcomePage := pages.NewWelcomePage(u.mainWindow, u.KuCli, addTabFn)
+	tabs.Append(container.NewTabItem("Welcome", welcomePage.Build()))
+	content.Add(tabs)
+
 	navPage := pages.NewNav(u.mainWindow, u.KuCli, func(namespace string) {
 		addTabFn(namespace, func(ctx context.Context) fyne.CanvasObject {
 			return pages.NewNamespace(u.mainWindow, u.KuCli, namespace, addTabFn).Build(ctx)
@@ -90,19 +89,21 @@ func (u *ui) Init() error {
 	return nil
 }
 
-func (u *ui) makeTray() {
-	if desk, ok := u.app.(desktop.App); ok {
-		h := fyne.NewMenuItem("Hello", func() {})
-		h.Icon = theme.HomeIcon()
-		menu := fyne.NewMenu("Hello World", h)
-		h.Action = func() {
-			log.Println("System tray menu tapped")
-			h.Label = "Welcome"
-			menu.Refresh()
-		}
-		desk.SetSystemTrayMenu(menu)
-	}
-}
+//func (u *ui) makeTray() {
+//	desk, ok := u.app.(desktop.App)
+//	if !ok {
+//		return
+//	}
+//	h := fyne.NewMenuItem("Hello", func() {})
+//	h.Icon = theme.HomeIcon()
+//	menu := fyne.NewMenu("Hello World", h)
+//	h.Action = func() {
+//		log.Println("System tray menu tapped")
+//		h.Label = "Welcome"
+//		menu.Refresh()
+//	}
+//	desk.SetSystemTrayMenu(menu)
+//}
 
 type tabContent struct {
 	Item       *container.TabItem

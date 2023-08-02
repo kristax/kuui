@@ -11,6 +11,7 @@ import (
 	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
 	"github.com/kristax/kuui/kucli"
+	"github.com/kristax/kuui/themes"
 	"github.com/kristax/kuui/util/fas"
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
@@ -58,17 +59,19 @@ func (u *Nav) Build() *fyne.Container {
 	navBottom := container.NewGridWithColumns(2, btnReload, btnTheme)
 	nav := container.NewBorder(nil, navBottom, nil, nil, navTree)
 
-	app.Settings().SetTheme(fas.TernaryOp(themeDark, theme.DarkTheme(), theme.LightTheme()))
+	app.Settings().SetTheme(fas.TernaryOp(themeDark, themes.DarkTheme(), themes.LightTheme()))
 	btnTheme.OnTapped = func() {
-		themeDark = !themeDark
-		app.Preferences().SetBool(preference.ThemeDark, themeDark)
-		if themeDark {
-			app.Settings().SetTheme(theme.DarkTheme())
-			btnTheme.SetText("Light")
-		} else {
-			app.Settings().SetTheme(theme.LightTheme())
-			btnTheme.SetText("Dark")
-		}
+		go func() {
+			themeDark = !themeDark
+			app.Preferences().SetBool(preference.ThemeDark, themeDark)
+			if themeDark {
+				app.Settings().SetTheme(themes.DarkTheme())
+				btnTheme.SetText("Light")
+			} else {
+				app.Settings().SetTheme(themes.LightTheme())
+				btnTheme.SetText("Dark")
+			}
+		}()
 	}
 
 	btnReload.OnTapped = func() {
@@ -156,7 +159,37 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 
 func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	navIndex := buildTreeData(pods, page, size)
-	tree := widget.NewTreeWithStrings(navIndex)
+
+	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
+
+	tree := widget.NewTree(func(id widget.TreeNodeID) []widget.TreeNodeID {
+		return navIndex[id]
+	}, func(id widget.TreeNodeID) bool {
+		_, ok := navIndex[id]
+		return ok
+	}, func(b bool) fyne.CanvasObject {
+		if b {
+			return container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.CheckButtonIcon(), nil), widget.NewLabel(""))
+		}
+		return widget.NewLabel("")
+	}, func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
+		var lb *widget.Label
+		if b {
+			border := object.(*fyne.Container)
+			lb = border.Objects[0].(*widget.Label)
+			btn := border.Objects[1].(*widget.Button)
+
+			contains := lo.Contains(collections, id)
+			if contains {
+				btn.SetIcon(theme.CheckButtonCheckedIcon())
+			}
+			btn.OnTapped = manageCollection(btn, id, &contains)
+		} else {
+			lb = object.(*widget.Label)
+		}
+		lb.SetText(id)
+	})
+	//tree := widget.NewTreeWithStrings(navIndex)
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if t, ok := u.navItems[uid]; ok {
 			var err error
@@ -172,6 +205,26 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 		tree.Unselect(uid)
 	}
 	return tree
+}
+
+func manageCollection(btn *widget.Button, id string, contains *bool) func() {
+	return func() {
+		*contains = !*contains
+		collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
+		if *contains {
+			btn.SetIcon(theme.CheckButtonCheckedIcon())
+			collections = append(collections, id)
+		} else {
+			btn.SetIcon(theme.CheckButtonIcon())
+			collections = lo.Filter(collections, func(item string, _ int) bool {
+				return item != id
+			})
+		}
+		sort.Slice(collections, func(i, j int) bool {
+			return collections[i] < collections[j]
+		})
+		fyne.CurrentApp().Preferences().SetStringList(preference.NSCollections, collections)
+	}
 }
 
 func buildTreeData(pods []v1.Pod, page, size int) (navIndex map[string][]string) {

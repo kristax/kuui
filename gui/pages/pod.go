@@ -13,6 +13,7 @@ import (
 	"github.com/kristax/kuui/kucli"
 	"github.com/kristax/kuui/util/fas"
 	v1 "k8s.io/api/core/v1"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -182,9 +183,6 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 
 	go func() {
 		for log := range logCh {
-			if log == "" || log == "\n" {
-				continue
-			}
 			if pause {
 				temp = append(temp, log)
 				continue
@@ -197,7 +195,8 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 			}
 			p.AddItem(log)
 			if isPrint {
-				fmt.Println(log)
+				os.Stdout.WriteString(log)
+				//fmt.Println(log)
 			}
 		}
 	}()
@@ -209,7 +208,7 @@ var compile = regexp.MustCompile(`\[\d+(;\d+)*m`)
 
 func (p *PodPage) AddItem(txt string) {
 	if compile.MatchString(txt) {
-		txt = compile.ReplaceAllString(txt, "")
+		txt = compile.ReplaceAllString(txt, "**")
 	}
 	content := widgets.NewTappableLabel(txt)
 	content.TextStyle = fyne.TextStyle{
@@ -217,7 +216,13 @@ func (p *PodPage) AddItem(txt string) {
 		Symbol:    true,
 	}
 	content.Wrapping = fyne.TextWrapWord
-	content.OnTapped = func() {
+	content.OnTapped = p.contentTapped(txt)
+	p.list.Add(content)
+	p.vScroll.ScrollToBottom()
+}
+
+func (p *PodPage) contentTapped(txt string) func() {
+	return func() {
 		var formatted, err = formatLog(txt)
 		if err != nil {
 			p.txtLog.SetText(txt)
@@ -228,8 +233,6 @@ func (p *PodPage) AddItem(txt string) {
 			return p.frameLogDetail
 		})
 	}
-	p.list.Add(content)
-	p.vScroll.ScrollToBottom()
 }
 
 func formatLog(txt string) (string, error) {

@@ -5,9 +5,12 @@ import (
 	"io"
 	appV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 type KuCli interface {
+	ApiConfig() api.Config
+
 	GetNamespaces(ctx context.Context) ([]coreV1.Namespace, error)
 
 	GetPods(ctx context.Context, namespace string) ([]coreV1.Pod, error)

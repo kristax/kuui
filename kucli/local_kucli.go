@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/util/homedir"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 type localCli struct {
 	config    *rest.Config
+	apiConfig api.Config
 	clientSet *kubernetes.Clientset
 }
 
@@ -48,7 +50,19 @@ func (c *localCli) Init() error {
 	if err != nil {
 		return err
 	}
+	c.apiConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: *kubeconfig},
+		&clientcmd.ConfigOverrides{
+			CurrentContext: "",
+		}).RawConfig()
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func (c *localCli) ApiConfig() api.Config {
+	return c.apiConfig
 }
 
 func (c *localCli) GetNamespaces(ctx context.Context) ([]coreV1.Namespace, error) {
@@ -116,7 +130,7 @@ func (c *localCli) TailfLogs(ctx context.Context, namespace, podName string, tai
 				if err == io.EOF {
 					return
 				} else {
-					ch <- str
+					ch <- strings.TrimSuffix(str, "\n")
 				}
 			}
 		}
