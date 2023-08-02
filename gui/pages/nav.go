@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
 	"github.com/kristax/kuui/kucli"
 	"github.com/kristax/kuui/util/fas"
@@ -49,21 +50,24 @@ func (u *Nav) Build() *fyne.Container {
 	defer refresh(u.pods)
 
 	app := fyne.CurrentApp()
-	var themeV = app.Settings().ThemeVariant()
-	btnTheme := widget.NewButton(fas.TernaryOp(themeV == theme.VariantDark, "Light", "Dark"), nil)
+
+	themeDark := app.Preferences().BoolWithFallback(preference.ThemeDark, app.Settings().ThemeVariant() == theme.VariantDark)
+
+	btnTheme := widget.NewButton(fas.TernaryOp(themeDark, "Light", "Dark"), nil)
 	btnReload := widget.NewButton("Reload", nil)
 	navBottom := container.NewGridWithColumns(2, btnReload, btnTheme)
 	nav := container.NewBorder(nil, navBottom, nil, nil, navTree)
 
+	app.Settings().SetTheme(fas.TernaryOp(themeDark, theme.DarkTheme(), theme.LightTheme()))
 	btnTheme.OnTapped = func() {
-		if themeV == theme.VariantDark {
-			themeV = theme.VariantLight
-			app.Settings().SetTheme(theme.LightTheme())
-			btnTheme.SetText("Dark")
-		} else {
-			themeV = theme.VariantDark
+		themeDark = !themeDark
+		app.Preferences().SetBool(preference.ThemeDark, themeDark)
+		if themeDark {
 			app.Settings().SetTheme(theme.DarkTheme())
 			btnTheme.SetText("Light")
+		} else {
+			app.Settings().SetTheme(theme.LightTheme())
+			btnTheme.SetText("Dark")
 		}
 	}
 
@@ -85,7 +89,7 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 		pods      = u.pods
 		page      = 1
 		size      = 20
-		searchStr string
+		searchStr = fyne.CurrentApp().Preferences().String(preference.NavSearchStr)
 	)
 
 	var tree = &widget.Tree{}
@@ -139,9 +143,11 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 	}
 
 	txtSearch.SetPlaceHolder("search")
+	txtSearch.SetText(searchStr)
 	txtSearch.OnChanged = func(s string) {
 		page = 1
 		searchStr = s
+		fyne.CurrentApp().Preferences().SetString(preference.NavSearchStr, searchStr)
 		refreshTreeFunc(u.pods)
 	}
 
@@ -161,12 +167,7 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 			}
 			u.onPodSelected(t)
 		} else {
-			if tree.IsBranchOpen(uid) {
-				tree.CloseBranch(uid)
-			} else {
-				tree.OpenBranch(uid)
-				u.onNamespaceSelected(uid)
-			}
+			u.onNamespaceSelected(uid)
 		}
 		tree.Unselect(uid)
 	}

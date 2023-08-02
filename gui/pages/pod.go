@@ -8,9 +8,10 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
 	"github.com/kristax/kuui/kucli"
-	"github.com/samber/lo"
+	"github.com/kristax/kuui/util/fas"
 	v1 "k8s.io/api/core/v1"
 	"regexp"
 	"strconv"
@@ -37,6 +38,14 @@ func NewPodPage(cli kucli.KuCli, pod *v1.Pod, addTabFn func(name string, content
 }
 
 func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
+	var (
+		pause = false
+		//history []string
+		temp    []string
+		search  string
+		isPrint = fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
+	)
+
 	p.list = container.NewVBox()
 	p.vScroll = container.NewScroll(p.list)
 	txtSearch := widget.NewEntry()
@@ -44,7 +53,7 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 	toolbar := widget.NewToolbar(widget.NewToolbarSeparator())
 	tbiPause := widget.NewToolbarAction(theme.MediaPauseIcon(), nil)
 	tbiDelete := widget.NewToolbarAction(theme.MediaStopIcon(), nil)
-	//tbiRefresh := widget.NewToolbarAction(theme.ViewRefreshIcon(), nil)
+	tbiPrint := widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil)
 	tbiClear := widget.NewToolbarAction(theme.DeleteIcon(), nil)
 
 	txtLine := widgets.NewNumericalEntry()
@@ -94,12 +103,6 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 		return border
 	}
 
-	var (
-		pause = false
-		//history []string
-		temp   []string
-		search string
-	)
 	{
 		//pause
 		tbiPause.OnActivated = func() {
@@ -117,13 +120,6 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 			}
 			toolbar.Refresh()
 		}
-		toolbar.Append(tbiPause)
-
-		//refresh
-		//tbiRefresh.OnActivated = func() {
-		//	p.Build(ctx)
-		//}
-		//toolbar.Append(tbiRefresh)
 
 		//delete
 		tbiDelete.OnActivated = func() {
@@ -132,15 +128,30 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 				p.AddItem(fmt.Sprintf("delete pod failed: %v", err))
 			}
 		}
-		toolbar.Append(tbiDelete)
 
+		//clear
 		tbiClear.OnActivated = func() {
 			p.list.RemoveAll()
 			//history = []string{}
 			temp = []string{}
 		}
-		toolbar.Append(tbiClear)
 
+		//refresh
+		tbiPrint.OnActivated = func() {
+			isPrint = !isPrint
+			fyne.CurrentApp().Preferences().SetBool(preference.IsPrint, isPrint)
+			if isPrint {
+				tbiPrint.SetIcon(theme.RadioButtonCheckedIcon())
+			} else {
+				tbiPrint.SetIcon(theme.RadioButtonIcon())
+			}
+			toolbar.Refresh()
+		}
+
+		toolbar.Append(tbiPause)
+		toolbar.Append(tbiDelete)
+		toolbar.Append(tbiClear)
+		toolbar.Append(tbiPrint)
 	}
 
 	p.txtLog.TextStyle = fyne.TextStyle{
@@ -151,17 +162,21 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 
 	txtSearch.OnSubmitted = func(s string) {
 		search = s
+		//temporary close pause mode
+		if pause {
+			tbiPause.OnActivated()
+			defer tbiPause.OnActivated()
+		}
+		//query all logs
 		logs, err := p.cli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(line))
 		if err != nil {
-			p.AddItem(fmt.Sprintf("Tail Logs failed: %v", err))
+			logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
 			return
 		}
-		filtered := lo.Filter(logs, func(item string, _ int) bool {
-			return strings.Contains(strings.ToLower(item), strings.ToLower(s))
-		})
+		//clear screen
 		p.list.RemoveAll()
-		for _, log := range filtered {
-			p.AddItem(log)
+		for _, log := range logs {
+			logCh <- log
 		}
 	}
 
@@ -181,7 +196,9 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 				p.list.Remove(p.list.Objects[0])
 			}
 			p.AddItem(log)
-			fmt.Println(log)
+			if isPrint {
+				fmt.Println(log)
+			}
 		}
 	}()
 
