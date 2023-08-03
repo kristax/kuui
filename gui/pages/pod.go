@@ -126,14 +126,13 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 		tbiDelete.OnActivated = func() {
 			err := p.cli.DeletePod(ctx, p.pod.GetNamespace(), p.pod.GetName())
 			if err != nil {
-				p.AddItem(fmt.Sprintf("delete pod failed: %v", err))
+				logCh <- fmt.Sprintf("delete pod failed: %v", err)
 			}
 		}
 
 		//clear
 		tbiClear.OnActivated = func() {
 			p.list.RemoveAll()
-			//history = []string{}
 			temp = []string{}
 		}
 
@@ -160,6 +159,13 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 		Symbol:    true,
 	}
 	p.txtLog.Wrapping = fyne.TextWrapWord
+	p.txtLog.OnChanged = func(s string) {
+		f, err := formatLog(s)
+		if err != nil {
+			f = s
+		}
+		p.txtLog.SetText(f)
+	}
 
 	txtSearch.OnSubmitted = func(s string) {
 		search = s
@@ -223,12 +229,7 @@ func (p *PodPage) AddItem(txt string) {
 
 func (p *PodPage) contentTapped(txt string) func() {
 	return func() {
-		var formatted, err = formatLog(txt)
-		if err != nil {
-			p.txtLog.SetText(txt)
-			return
-		}
-		p.txtLog.SetText(formatted)
+		p.txtLog.SetText(txt)
 		p.addTabFn("L:"+p.pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
 			return p.frameLogDetail
 		})
@@ -236,22 +237,19 @@ func (p *PodPage) contentTapped(txt string) func() {
 }
 
 func formatLog(txt string) (string, error) {
-	var formatted = txt
-	if strings.HasPrefix(formatted, "{") {
+	if strings.HasPrefix(txt, "{") && strings.HasSuffix(txt, "}") {
 		var m = make(map[string]interface{})
-		err := json.Unmarshal([]byte(formatted), &m)
+		err := json.Unmarshal([]byte(txt), &m)
 		if err != nil {
-			fyne.LogError("", err)
-			return "", err
+			return txt, err
 		}
 		bytes, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {
-			fyne.LogError("", err)
-			return "", err
+			return txt, err
 		}
-		formatted = string(bytes)
+		return string(bytes), nil
 	}
-	return formatted, nil
+	return txt, nil
 }
 
 func cutJson(s string) (string, error) {
@@ -269,5 +267,5 @@ func cutJson(s string) (string, error) {
 	s = s[start : end+1]
 	s = strings.ReplaceAll(s, `\"`, `"`)
 	s = strings.ReplaceAll(s, `\n`, ``)
-	return formatLog(s)
+	return s, nil
 }

@@ -37,8 +37,8 @@ func (p *NamespacePage) Build(ctx context.Context) fyne.CanvasObject {
 	scroll := container.NewVScroll(grid)
 
 	grid.Add(p.buildDeploymentTable(ctx))
-	grid.Add(p.buildServicesTable(ctx))
 	grid.Add(p.buildPodsTable(ctx))
+	grid.Add(p.buildServicesTable(ctx))
 
 	go func() {
 		for {
@@ -46,7 +46,7 @@ func (p *NamespacePage) Build(ctx context.Context) fyne.CanvasObject {
 			case <-ctx.Done():
 				return
 			case <-time.Tick(time.Second):
-				grid.Objects[2] = p.buildPodsTable(ctx)
+				grid.Objects[1] = p.buildPodsTable(ctx)
 				grid.Refresh()
 			}
 		}
