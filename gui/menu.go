@@ -1,7 +1,11 @@
 package gui
 
 import (
+	"fmt"
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+	"github.com/google/go-cmp/cmp"
 )
 
 func (u *ui) makeMenu() {
@@ -85,9 +89,35 @@ func (u *ui) makeMenu() {
 	//	file.Items = append(file.Items, fyne.NewMenuItemSeparator(), settingsItem)
 	//}
 	main := fyne.NewMainMenu(
-	//file,
-	//fyne.NewMenu("Edit", cutItem, copyItem, pasteItem, fyne.NewMenuItemSeparator(), findItem),
-	//helpMenu,
+		fyne.NewMenu("Tool", fyne.NewMenuItem("cmp", func() {
+			cmpWindow := fyne.CurrentApp().NewWindow("cmp")
+			cmpWindow.Resize(fyne.NewSize(1920, 1080))
+			in1Entry := widget.NewMultiLineEntry()
+			in2Entry := widget.NewMultiLineEntry()
+			inSplit := container.NewVSplit(in1Entry, in2Entry)
+			resultEntry := widget.NewMultiLineEntry()
+			resultSplit := container.NewHSplit(inSplit, resultEntry)
+
+			onChangedFn := func(s string) {
+				in1 := in1Entry.Text
+				fmt.Println("in1", in1)
+				in2 := in2Entry.Text
+				fmt.Println("in2", in2)
+				if in1 == "" || in2 == "" {
+					return
+				}
+				diff := cmp.Diff(in1, in2)
+				resultEntry.SetText(diff)
+			}
+			in1Entry.OnChanged = onChangedFn
+			in2Entry.OnChanged = onChangedFn
+			cmpWindow.SetContent(resultSplit)
+			cmpWindow.CenterOnScreen()
+			cmpWindow.Show()
+		})),
+		//file,
+		//fyne.NewMenu("Edit", cutItem, copyItem, pasteItem, fyne.NewMenuItemSeparator(), findItem),
+		//helpMenu,
 	)
 	//checkedItem.Action = func() {
 	//	checkedItem.Checked = !checkedItem.Checked

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kristax/kuui/gui/preference"
@@ -24,195 +25,194 @@ type PodPage struct {
 	pod      *v1.Pod
 	addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)
 
-	txtLog         *widget.Entry
+	//txtLog         *widget.Entry
+	logData binding.String
+	txtLog  *widget.Entry
+
 	frameLogDetail *fyne.Container
-	list           *fyne.Container
-	vScroll        *container.Scroll
+
+	list    *fyne.Container
+	vScroll *container.Scroll
+
+	tbiPause  *widget.ToolbarAction
+	tbiDelete *widget.ToolbarAction
+	tbiPrint  *widget.ToolbarAction
+	tbiClear  *widget.ToolbarAction
+
+	pause  bool
+	line   int
+	search string
+
+	logCh   chan string
+	temp    []string
+	isPrint bool
 }
 
 func NewPodPage(cli kucli.KuCli, pod *v1.Pod, addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)) *PodPage {
+	logData := binding.NewString()
+	txtLog := widget.NewMultiLineEntry()
+	txtLog.Bind(logData)
+	tbLogDetail := widget.NewToolbar(widget.NewToolbarAction(theme.ContentCutIcon(), func() {
+		txt, _ := logData.Get()
+		s, err := cutJson(txt)
+		if err != nil {
+			return
+		}
+		logData.Set(s)
+	}))
+	list := container.NewVBox()
+	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
 	return &PodPage{
-		cli:      cli,
-		pod:      pod,
-		addTabFn: addTabFn,
+		cli:            cli,
+		pod:            pod,
+		addTabFn:       addTabFn,
+		logData:        logData,
+		txtLog:         txtLog,
+		frameLogDetail: container.NewBorder(tbLogDetail, nil, nil, nil, txtLog),
+		list:           list,
+		vScroll:        container.NewScroll(list),
+		tbiPause:       widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
+		tbiDelete:      widget.NewToolbarAction(theme.MediaStopIcon(), nil),
+		tbiPrint:       widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
+		tbiClear:       widget.NewToolbarAction(theme.DeleteIcon(), nil),
+		pause:          false,
+		line:           100,
+		search:         "",
+		logCh:          nil,
+		temp:           nil,
+		isPrint:        isPrint,
 	}
 }
 
 func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
-	var (
-		pause = false
-		//history []string
-		temp    []string
-		search  string
-		isPrint = fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
-	)
-
-	p.list = container.NewVBox()
-	p.vScroll = container.NewScroll(p.list)
 	txtSearch := widget.NewEntry()
-
 	toolbar := widget.NewToolbar(widget.NewToolbarSeparator())
-	tbiPause := widget.NewToolbarAction(theme.MediaPauseIcon(), nil)
-	tbiDelete := widget.NewToolbarAction(theme.MediaStopIcon(), nil)
-	tbiPrint := widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil)
-	tbiClear := widget.NewToolbarAction(theme.DeleteIcon(), nil)
-
 	txtLine := widgets.NewNumericalEntry()
 	searchBorder := container.NewBorder(nil, nil, nil, container.NewHBox(widget.NewLabel("tail"), txtLine), txtSearch)
 	titleBox := container.NewBorder(nil, nil, nil, toolbar, searchBorder)
-
-	p.txtLog = widget.NewMultiLineEntry()
-	tbLogDetail := widget.NewToolbar(widget.NewToolbarAction(theme.ContentCutIcon(), func() {
-		s, err := cutJson(p.txtLog.Text)
-		if err != nil {
-			return
-		}
-		p.txtLog.SetText(s)
-	}))
-	p.frameLogDetail = container.NewBorder(tbLogDetail, nil, nil, nil, p.txtLog)
-
 	border := container.NewBorder(titleBox, nil, nil, nil, p.vScroll)
-
-	var line = 100
-	txtLine.SetText(strconv.Itoa(line))
-	txtLine.OnChanged = func(s string) {
-		if s == "" {
-			txtLine.SetText(strconv.Itoa(line))
-			return
-		}
-		d, _ := strconv.Atoi(s)
-		if d == 0 {
-			txtLine.SetText(strconv.Itoa(1))
-			return
-		}
-		line = d
-		length := len(p.list.Objects)
-		if length >= line {
-			sub := length - line
-			for i := 0; i <= sub; i++ {
-				p.list.Remove(p.list.Objects[0])
-			}
-			p.list.Refresh()
-			p.vScroll.ScrollToBottom()
-		}
-	}
-
-	logCh, err := p.cli.TailfLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(line))
-	if err != nil {
-		fyne.LogError("tail logs failed", err)
-		p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
-		return border
-	}
 
 	{
 		//pause
-		tbiPause.OnActivated = func() {
-			pause = !pause
-			if pause {
-				tbiPause.SetIcon(theme.MediaPlayIcon())
+		p.tbiPause.OnActivated = func() {
+			p.pause = !p.pause
+			if p.pause {
+				p.tbiPause.SetIcon(theme.MediaPlayIcon())
 			} else {
-				if len(temp) != 0 {
-					for _, log := range temp {
-						logCh <- log
+				if len(p.temp) != 0 {
+					for _, log := range p.temp {
+						p.logCh <- log
 					}
-					temp = []string{}
+					p.temp = []string{}
 				}
-				tbiPause.SetIcon(theme.MediaPauseIcon())
+				p.tbiPause.SetIcon(theme.MediaPauseIcon())
 			}
 			toolbar.Refresh()
 		}
 
 		//delete
-		tbiDelete.OnActivated = func() {
+		p.tbiDelete.OnActivated = func() {
 			err := p.cli.DeletePod(ctx, p.pod.GetNamespace(), p.pod.GetName())
 			if err != nil {
-				logCh <- fmt.Sprintf("delete pod failed: %v", err)
+				p.logCh <- fmt.Sprintf("delete pod failed: %v", err)
 			}
 		}
 
 		//clear
-		tbiClear.OnActivated = func() {
+		p.tbiClear.OnActivated = func() {
 			p.list.RemoveAll()
-			temp = []string{}
+			p.temp = []string{}
 		}
 
 		//refresh
-		tbiPrint.OnActivated = func() {
-			isPrint = !isPrint
-			fyne.CurrentApp().Preferences().SetBool(preference.IsPrint, isPrint)
-			if isPrint {
-				tbiPrint.SetIcon(theme.RadioButtonCheckedIcon())
+		p.tbiPrint.OnActivated = func() {
+			p.isPrint = !p.isPrint
+			fyne.CurrentApp().Preferences().SetBool(preference.IsPrint, p.isPrint)
+			if p.isPrint {
+				p.tbiPrint.SetIcon(theme.RadioButtonCheckedIcon())
 			} else {
-				tbiPrint.SetIcon(theme.RadioButtonIcon())
+				p.tbiPrint.SetIcon(theme.RadioButtonIcon())
 			}
 			toolbar.Refresh()
 		}
 
-		toolbar.Append(tbiPause)
-		toolbar.Append(tbiDelete)
-		toolbar.Append(tbiClear)
-		toolbar.Append(tbiPrint)
+		toolbar.Append(p.tbiPause)
+		toolbar.Append(p.tbiDelete)
+		toolbar.Append(p.tbiClear)
+		toolbar.Append(p.tbiPrint)
 	}
 
-	p.txtLog.TextStyle = fyne.TextStyle{
-		Monospace: true,
-		Symbol:    true,
-	}
 	p.txtLog.Wrapping = fyne.TextWrapWord
 	p.txtLog.OnChanged = func(s string) {
 		f, err := formatLog(s)
 		if err != nil {
 			f = s
 		}
-		p.txtLog.SetText(f)
+		p.logData.Set(f)
 	}
 
+	txtLine.SetText(strconv.Itoa(p.line))
+	txtLine.OnSubmitted = func(s string) {
+		d, _ := strconv.Atoi(s)
+		p.line = d
+		p.reloadLog(ctx)
+	}
 	txtSearch.OnSubmitted = func(s string) {
-		search = s
-		//temporary close pause mode
-		if pause {
-			tbiPause.OnActivated()
-			defer tbiPause.OnActivated()
-		}
-		//query all logs
-		logs, err := p.cli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(line))
-		if err != nil {
-			logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
-			return
-		}
-		//clear screen
-		p.list.RemoveAll()
-		for _, log := range logs {
-			logCh <- log
-		}
+		p.search = s
+		p.reloadLog(ctx)
 	}
 
-	go func() {
-		for log := range logCh {
-			if pause {
-				temp = append(temp, log)
-				continue
-			}
-			if search != "" && !strings.Contains(strings.ToLower(log), strings.ToLower(search)) {
-				continue
-			}
-			if len(p.list.Objects) >= line {
-				p.list.Remove(p.list.Objects[0])
-			}
-			p.AddItem(log)
-			if isPrint {
-				os.Stdout.WriteString(log)
-				//fmt.Println(log)
-			}
-		}
-	}()
-
+	go p.run(ctx)
 	return border
+}
+
+func (p *PodPage) run(ctx context.Context) {
+	var err error
+	p.logCh, err = p.cli.TailfLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
+	if err != nil {
+		fyne.LogError("tail logs failed", err)
+		p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
+		return
+	}
+	for log := range p.logCh {
+		if p.pause {
+			p.temp = append(p.temp, log)
+			continue
+		}
+		if p.search != "" && !strings.Contains(strings.ToLower(log), strings.ToLower(p.search)) {
+			continue
+		}
+		if len(p.list.Objects) > p.line {
+			p.list.Remove(p.list.Objects[0])
+		}
+		p.AddItem(log)
+	}
+}
+
+func (p *PodPage) reloadLog(ctx context.Context) {
+	//temporary close pause mode
+	if p.pause {
+		p.tbiPause.OnActivated()
+	}
+	//query all logs
+	logs, err := p.cli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
+	if err != nil {
+		p.logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
+		return
+	}
+	//clear screen
+	p.list.RemoveAll()
+	for _, log := range logs {
+		p.logCh <- log
+	}
 }
 
 var compile = regexp.MustCompile(`\[\d+(;\d+)*m`)
 
 func (p *PodPage) AddItem(txt string) {
+	if p.isPrint {
+		os.Stdout.WriteString(txt)
+	}
 	if compile.MatchString(txt) {
 		txt = compile.ReplaceAllString(txt, "**")
 	}
@@ -229,7 +229,7 @@ func (p *PodPage) AddItem(txt string) {
 
 func (p *PodPage) contentTapped(txt string) func() {
 	return func() {
-		p.txtLog.SetText(txt)
+		p.logData.Set(txt)
 		p.addTabFn("L:"+p.pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
 			return p.frameLogDetail
 		})

@@ -5,6 +5,7 @@ go 1.20
 require (
 	fyne.io/fyne/v2 v2.3.6-0.20230704203313-e050d7994adc
 	github.com/go-kid/ioc v1.1.0
+	github.com/google/go-cmp v0.5.9
 	github.com/samber/lo v1.38.1
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17
@@ -35,7 +36,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
