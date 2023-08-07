@@ -17,7 +17,6 @@ type DiffPage struct {
 
 func NewDiffPage() *DiffPage {
 	result := widget.NewTextGrid()
-	result.ShowLineNumbers = true
 	result.ShowWhitespace = true
 	return &DiffPage{
 		result:   result,

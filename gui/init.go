@@ -1,7 +1,17 @@
 package gui
 
-import "github.com/go-kid/ioc"
+import (
+	"fyne.io/fyne/v2/app"
+	"github.com/go-kid/ioc"
+	"github.com/kristax/kuui/gui/pages"
+)
 
 func init() {
-	ioc.Register(NewUI())
+	ioc.Register(
+		app.NewWithID("com.kristas.kuui"),
+		NewUI(),
+		pages.NewMainWindow(),
+		pages.NewWelcomePage(),
+		pages.NewNav(),
+	)
 }

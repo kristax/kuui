@@ -11,17 +11,12 @@ import (
 )
 
 type WelcomePage struct {
-	mainWindow fyne.Window
-	cli        kucli.KuCli
-	addTabFn   func(name string, content func(ctx context.Context) fyne.CanvasObject)
+	MainWindow *MainWindow `wire:""`
+	KuCli      kucli.KuCli `wire:""`
 }
 
-func NewWelcomePage(mainWindow fyne.Window, cli kucli.KuCli, addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)) *WelcomePage {
-	return &WelcomePage{
-		mainWindow: mainWindow,
-		cli:        cli,
-		addTabFn:   addTabFn,
-	}
+func NewWelcomePage() *WelcomePage {
+	return &WelcomePage{}
 }
 
 func (p *WelcomePage) Build() fyne.CanvasObject {
@@ -45,8 +40,8 @@ func (p *WelcomePage) newList() *widget.List {
 		object.(*widget.Label).SetText(s)
 	})
 	list.OnSelected = func(id widget.ListItemID) {
-		namespacePage := NewNamespace(p.mainWindow, p.cli, collections[id], p.addTabFn)
-		p.addTabFn(collections[id], func(ctx context.Context) fyne.CanvasObject {
+		namespacePage := newNamespace(p.MainWindow, collections[id])
+		p.MainWindow.AddTab(collections[id], func(ctx context.Context) fyne.CanvasObject {
 			return namespacePage.Build(ctx)
 		})
 	}

@@ -22,31 +22,34 @@ import (
 )
 
 type Nav struct {
-	KuCli kucli.KuCli
+	MainWindow *MainWindow `wire:""`
+	KuCli      kucli.KuCli `wire:""`
 
-	mainWindow          fyne.Window
 	pods                []v1.Pod
 	navItems            map[string]*v1.Pod
 	onNamespaceSelected func(namespace string)
 	onPodSelected       func(pod *v1.Pod)
 }
 
-func NewNav(mainWindow fyne.Window, KuCli kucli.KuCli, onNamespaceSelected func(namespace string), onPodSelected func(pod *v1.Pod)) *Nav {
-	return &Nav{
-		KuCli:               KuCli,
-		mainWindow:          mainWindow,
-		pods:                nil,
-		navItems:            nil,
-		onNamespaceSelected: onNamespaceSelected,
-		onPodSelected:       onPodSelected,
+func NewNav() *Nav {
+	return &Nav{}
+}
+
+func (u *Nav) Init() error {
+	u.onNamespaceSelected = func(namespace string) {
+		u.MainWindow.AddTab(namespace, func(ctx context.Context) fyne.CanvasObject {
+			return newNamespace(u.MainWindow, namespace).Build(ctx)
+		})
 	}
+	u.onPodSelected = func(pod *v1.Pod) {
+		u.MainWindow.AddTab(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
+			return newLogListPage(u.MainWindow, pod).Build(ctx)
+		})
+	}
+	return u.loadResources()
 }
 
 func (u *Nav) Build() *fyne.Container {
-	err := u.loadResources()
-	if err != nil {
-		panic(err)
-	}
 	navTree, refresh := u.buildNavTree()
 	defer refresh(u.pods)
 
@@ -162,17 +165,20 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 
 	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
 
-	tree := widget.NewTree(func(id widget.TreeNodeID) []widget.TreeNodeID {
+	var childUIDs = func(id widget.TreeNodeID) []widget.TreeNodeID {
 		return navIndex[id]
-	}, func(id widget.TreeNodeID) bool {
+	}
+	var isBranch = func(id widget.TreeNodeID) bool {
 		_, ok := navIndex[id]
 		return ok
-	}, func(b bool) fyne.CanvasObject {
+	}
+	var create = func(b bool) fyne.CanvasObject {
 		if b {
 			return container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.CheckButtonIcon(), nil), widget.NewLabel(""))
 		}
 		return widget.NewLabel("")
-	}, func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
+	}
+	var update = func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
 		var lb *widget.Label
 		if b {
 			border := object.(*fyne.Container)
@@ -188,14 +194,14 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 			lb = object.(*widget.Label)
 		}
 		lb.SetText(id)
-	})
-	//tree := widget.NewTreeWithStrings(navIndex)
+	}
+	tree := widget.NewTree(childUIDs, isBranch, create, update)
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if t, ok := u.navItems[uid]; ok {
 			var err error
 			t, err = u.KuCli.GetPod(context.Background(), t.GetNamespace(), t.GetName())
 			if err != nil {
-				dialog.ShowError(fmt.Errorf("%v, please reload", err), u.mainWindow)
+				dialog.ShowError(fmt.Errorf("%v, please reload", err), u.MainWindow.Content())
 				return
 			}
 			u.onPodSelected(t)

@@ -1,11 +1,10 @@
-package gui
+package pages
 
 import (
 	"fyne.io/fyne/v2"
-	"github.com/kristax/kuui/gui/pages"
 )
 
-func (u *ui) makeMenu() {
+func (u *MainWindow) makeMenu() {
 	//a, w := u.app, u.mainWindow
 	//newItem := fyne.NewMenuItem("New", nil)
 	//checkedItem := fyne.NewMenuItem("Checked", nil)
@@ -101,7 +100,7 @@ func (u *ui) makeMenu() {
 func diffMenuItemAction() {
 	cmpWindow := fyne.CurrentApp().NewWindow("diff")
 	cmpWindow.Resize(fyne.NewSize(1920, 1080))
-	page := pages.NewDiffPage().Build()
+	page := NewDiffPage().Build()
 	cmpWindow.SetContent(page)
 	cmpWindow.CenterOnScreen()
 	cmpWindow.Show()

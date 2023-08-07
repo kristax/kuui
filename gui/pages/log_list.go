@@ -2,16 +2,13 @@ package pages
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
-	"github.com/kristax/kuui/kucli"
 	"github.com/kristax/kuui/util/fas"
 	v1 "k8s.io/api/core/v1"
 	"os"
@@ -20,16 +17,11 @@ import (
 	"strings"
 )
 
-type PodPage struct {
-	cli      kucli.KuCli
-	pod      *v1.Pod
-	addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)
+type LogListPage struct {
+	mainWindow *MainWindow
+	pod        *v1.Pod
 
-	//txtLog         *widget.Entry
-	logData binding.String
-	txtLog  *widget.Entry
-
-	frameLogDetail *fyne.Container
+	logDetail *LogDetailPage
 
 	list    *fyne.Container
 	vScroll *container.Scroll
@@ -48,47 +40,33 @@ type PodPage struct {
 	isPrint bool
 }
 
-func NewPodPage(cli kucli.KuCli, pod *v1.Pod, addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)) *PodPage {
-	logData := binding.NewString()
-	txtLog := widget.NewMultiLineEntry()
-	txtLog.Bind(logData)
-	tbLogDetail := widget.NewToolbar(widget.NewToolbarAction(theme.ContentCutIcon(), func() {
-		txt, _ := logData.Get()
-		s, err := cutJson(txt)
-		if err != nil {
-			return
-		}
-		logData.Set(s)
-	}))
+func newLogListPage(mainWindow *MainWindow, pod *v1.Pod) *LogListPage {
 	list := container.NewVBox()
 	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
-	return &PodPage{
-		cli:            cli,
-		pod:            pod,
-		addTabFn:       addTabFn,
-		logData:        logData,
-		txtLog:         txtLog,
-		frameLogDetail: container.NewBorder(tbLogDetail, nil, nil, nil, txtLog),
-		list:           list,
-		vScroll:        container.NewScroll(list),
-		tbiPause:       widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
-		tbiDelete:      widget.NewToolbarAction(theme.MediaStopIcon(), nil),
-		tbiPrint:       widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
-		tbiClear:       widget.NewToolbarAction(theme.DeleteIcon(), nil),
-		pause:          false,
-		line:           100,
-		search:         "",
-		logCh:          nil,
-		temp:           nil,
-		isPrint:        isPrint,
+	return &LogListPage{
+		mainWindow: mainWindow,
+		pod:        pod,
+		list:       list,
+		logDetail:  newLogDetailPage(mainWindow),
+		vScroll:    container.NewScroll(list),
+		tbiPause:   widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
+		tbiDelete:  widget.NewToolbarAction(theme.MediaStopIcon(), nil),
+		tbiPrint:   widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
+		tbiClear:   widget.NewToolbarAction(theme.DeleteIcon(), nil),
+		pause:      false,
+		line:       100,
+		search:     "",
+		logCh:      nil,
+		temp:       nil,
+		isPrint:    isPrint,
 	}
 }
 
-func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
+func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 	txtSearch := widget.NewEntry()
 	toolbar := widget.NewToolbar(widget.NewToolbarSeparator())
 	txtLine := widgets.NewNumericalEntry()
-	searchBorder := container.NewBorder(nil, nil, nil, container.NewHBox(widget.NewLabel("tail"), txtLine), txtSearch)
+	searchBorder := container.NewBorder(nil, nil, nil, container.NewHBox(widget.NewLabel("line"), txtLine), txtSearch)
 	titleBox := container.NewBorder(nil, nil, nil, toolbar, searchBorder)
 	border := container.NewBorder(titleBox, nil, nil, nil, p.vScroll)
 
@@ -112,7 +90,7 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 
 		//delete
 		p.tbiDelete.OnActivated = func() {
-			err := p.cli.DeletePod(ctx, p.pod.GetNamespace(), p.pod.GetName())
+			err := p.mainWindow.KuCli.DeletePod(ctx, p.pod.GetNamespace(), p.pod.GetName())
 			if err != nil {
 				p.logCh <- fmt.Sprintf("delete pod failed: %v", err)
 			}
@@ -142,15 +120,6 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 		toolbar.Append(p.tbiPrint)
 	}
 
-	p.txtLog.Wrapping = fyne.TextWrapWord
-	p.txtLog.OnChanged = func(s string) {
-		f, err := formatLog(s)
-		if err != nil {
-			f = s
-		}
-		p.logData.Set(f)
-	}
-
 	txtLine.SetText(strconv.Itoa(p.line))
 	txtLine.OnSubmitted = func(s string) {
 		d, _ := strconv.Atoi(s)
@@ -166,9 +135,9 @@ func (p *PodPage) Build(ctx context.Context) fyne.CanvasObject {
 	return border
 }
 
-func (p *PodPage) run(ctx context.Context) {
+func (p *LogListPage) run(ctx context.Context) {
 	var err error
-	p.logCh, err = p.cli.TailfLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
+	p.logCh, err = p.mainWindow.KuCli.TailfLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
 	if err != nil {
 		fyne.LogError("tail logs failed", err)
 		p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
@@ -189,13 +158,13 @@ func (p *PodPage) run(ctx context.Context) {
 	}
 }
 
-func (p *PodPage) reloadLog(ctx context.Context) {
+func (p *LogListPage) reloadLog(ctx context.Context) {
 	//temporary close pause mode
 	if p.pause {
 		p.tbiPause.OnActivated()
 	}
 	//query all logs
-	logs, err := p.cli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
+	logs, err := p.mainWindow.KuCli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
 	if err != nil {
 		p.logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
 		return
@@ -209,7 +178,7 @@ func (p *PodPage) reloadLog(ctx context.Context) {
 
 var compile = regexp.MustCompile(`\[\d+(;\d+)*m`)
 
-func (p *PodPage) AddItem(txt string) {
+func (p *LogListPage) AddItem(txt string) {
 	if p.isPrint {
 		os.Stdout.WriteString(txt)
 	}
@@ -217,55 +186,14 @@ func (p *PodPage) AddItem(txt string) {
 		txt = compile.ReplaceAllString(txt, "**")
 	}
 	content := widgets.NewTappableLabel(txt)
-	content.TextStyle = fyne.TextStyle{
-		Monospace: true,
-		Symbol:    true,
-	}
 	content.Wrapping = fyne.TextWrapWord
 	content.OnTapped = p.contentTapped(txt)
 	p.list.Add(content)
 	p.vScroll.ScrollToBottom()
 }
 
-func (p *PodPage) contentTapped(txt string) func() {
+func (p *LogListPage) contentTapped(txt string) func() {
 	return func() {
-		p.logData.Set(txt)
-		p.addTabFn("L:"+p.pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			return p.frameLogDetail
-		})
+		p.logDetail.Show(p.pod.GetName(), txt)
 	}
-}
-
-func formatLog(txt string) (string, error) {
-	if strings.HasPrefix(txt, "{") && strings.HasSuffix(txt, "}") {
-		var m = make(map[string]interface{})
-		err := json.Unmarshal([]byte(txt), &m)
-		if err != nil {
-			return txt, err
-		}
-		bytes, err := json.MarshalIndent(m, "", "  ")
-		if err != nil {
-			return txt, err
-		}
-		return string(bytes), nil
-	}
-	return txt, nil
-}
-
-func cutJson(s string) (string, error) {
-	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start == -1 || end == -1 {
-		return s, nil
-	}
-	s = s[start+1 : end]
-	start = strings.Index(s, "{")
-	end = strings.LastIndex(s, "}")
-	if start == -1 || end == -1 {
-		return s, nil
-	}
-	s = s[start : end+1]
-	s = strings.ReplaceAll(s, `\"`, `"`)
-	s = strings.ReplaceAll(s, `\n`, ``)
-	return s, nil
 }

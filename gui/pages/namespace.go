@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kristax/kuui/gui/widgets"
-	"github.com/kristax/kuui/kucli"
 	"github.com/samber/lo"
 	coreV1 "k8s.io/api/core/v1"
 	"strconv"
@@ -17,18 +16,14 @@ import (
 )
 
 type NamespacePage struct {
-	mainWindow fyne.Window
-	cli        kucli.KuCli
+	mainWindow *MainWindow
 	namespace  string
-	addTabFn   func(name string, content func(ctx context.Context) fyne.CanvasObject)
 }
 
-func NewNamespace(mainWindow fyne.Window, cli kucli.KuCli, namespace string, addTabFn func(name string, content func(ctx context.Context) fyne.CanvasObject)) *NamespacePage {
+func newNamespace(mainWindow *MainWindow, namespace string) *NamespacePage {
 	return &NamespacePage{
 		mainWindow: mainWindow,
-		cli:        cli,
 		namespace:  namespace,
-		addTabFn:   addTabFn,
 	}
 }
 
@@ -86,7 +81,7 @@ func buildTable(row, col int, updateHeader func(id widget.TableCellID, label *wi
 }
 
 func (p *NamespacePage) buildDeploymentTable(ctx context.Context) *widget.Card {
-	deployments, err := p.cli.GetDeployments(ctx, p.namespace)
+	deployments, err := p.mainWindow.KuCli.GetDeployments(ctx, p.namespace)
 	if err != nil {
 		fyne.LogError("get deployments", err)
 		return nil
@@ -127,13 +122,13 @@ func (p *NamespacePage) buildDeploymentTable(ctx context.Context) *widget.Card {
 		dialog.ShowCustomConfirm("Scale Replicas", "Scale", "Cancel", box, func(b bool) {
 			replica, _ := strconv.Atoi(txtScale.Text)
 			i32 := int32(replica)
-			result, err := p.cli.GetDeployment(ctx, p.namespace, deployment.GetName())
+			result, err := p.mainWindow.KuCli.GetDeployment(ctx, p.namespace, deployment.GetName())
 			if err != nil {
 				fyne.LogError("get deployment", err)
 				return
 			}
 			result.Spec.Replicas = &i32
-			result, err = p.cli.UpdateDeployment(ctx, p.namespace, result)
+			result, err = p.mainWindow.KuCli.UpdateDeployment(ctx, p.namespace, result)
 			if err != nil {
 				fyne.LogError("update deployment", err)
 				return
@@ -141,7 +136,7 @@ func (p *NamespacePage) buildDeploymentTable(ctx context.Context) *widget.Card {
 			go func() {
 				for result.Status.ReadyReplicas != *result.Spec.Replicas {
 					time.Sleep(time.Millisecond * 200)
-					result, err = p.cli.GetDeployment(ctx, p.namespace, result.GetName())
+					result, err = p.mainWindow.KuCli.GetDeployment(ctx, p.namespace, result.GetName())
 					if err != nil {
 						fyne.LogError("get deployment", err)
 						return
@@ -151,14 +146,14 @@ func (p *NamespacePage) buildDeploymentTable(ctx context.Context) *widget.Card {
 				}
 			}()
 
-		}, p.mainWindow)
+		}, p.mainWindow.Content())
 		table.Unselect(id)
 	})
 	return widget.NewCard("Deployments", "", table)
 }
 
 func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
-	pods, err := p.cli.GetPods(ctx, p.namespace)
+	pods, err := p.mainWindow.KuCli.GetPods(ctx, p.namespace)
 	if err != nil {
 		fyne.LogError("get deployments", err)
 		return widget.NewCard("", "", nil)
@@ -192,13 +187,13 @@ func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
 		}
 	}, func(id widget.TableCellID, table *widget.Table) {
 		selPod := pods[id.Row]
-		pod, err := p.cli.GetPod(ctx, p.namespace, selPod.GetName())
+		pod, err := p.mainWindow.KuCli.GetPod(ctx, p.namespace, selPod.GetName())
 		if err != nil {
 			fyne.LogError("get pod", err)
 			return
 		}
-		p.addTabFn(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			return NewPodPage(p.cli, pod, p.addTabFn).Build(ctx)
+		p.mainWindow.AddTab(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
+			return newLogListPage(p.mainWindow, pod).Build(ctx)
 		})
 		table.Unselect(id)
 	})
@@ -207,7 +202,7 @@ func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
 }
 
 func (p *NamespacePage) buildServicesTable(ctx context.Context) *widget.Card {
-	services, err := p.cli.GetServices(ctx, p.namespace)
+	services, err := p.mainWindow.KuCli.GetServices(ctx, p.namespace)
 	if err != nil {
 		fyne.LogError("get deployments", err)
 		return nil
