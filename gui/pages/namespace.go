@@ -161,7 +161,7 @@ func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
 	pods, err := p.cli.GetPods(ctx, p.namespace)
 	if err != nil {
 		fyne.LogError("get deployments", err)
-		return nil
+		return widget.NewCard("", "", nil)
 	}
 
 	table := buildTable(len(pods), 4, func(id widget.TableCellID, label *widget.Label) {

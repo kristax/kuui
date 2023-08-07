@@ -1,11 +1,8 @@
 package gui
 
 import (
-	"fmt"
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
-	"github.com/google/go-cmp/cmp"
+	"github.com/kristax/kuui/gui/pages"
 )
 
 func (u *ui) makeMenu() {
@@ -89,32 +86,7 @@ func (u *ui) makeMenu() {
 	//	file.Items = append(file.Items, fyne.NewMenuItemSeparator(), settingsItem)
 	//}
 	main := fyne.NewMainMenu(
-		fyne.NewMenu("Tool", fyne.NewMenuItem("cmp", func() {
-			cmpWindow := fyne.CurrentApp().NewWindow("cmp")
-			cmpWindow.Resize(fyne.NewSize(1920, 1080))
-			in1Entry := widget.NewMultiLineEntry()
-			in2Entry := widget.NewMultiLineEntry()
-			inSplit := container.NewVSplit(in1Entry, in2Entry)
-			resultEntry := widget.NewMultiLineEntry()
-			resultSplit := container.NewHSplit(inSplit, resultEntry)
-
-			onChangedFn := func(s string) {
-				in1 := in1Entry.Text
-				fmt.Println("in1", in1)
-				in2 := in2Entry.Text
-				fmt.Println("in2", in2)
-				if in1 == "" || in2 == "" {
-					return
-				}
-				diff := cmp.Diff(in1, in2)
-				resultEntry.SetText(diff)
-			}
-			in1Entry.OnChanged = onChangedFn
-			in2Entry.OnChanged = onChangedFn
-			cmpWindow.SetContent(resultSplit)
-			cmpWindow.CenterOnScreen()
-			cmpWindow.Show()
-		})),
+		fyne.NewMenu("Tool", fyne.NewMenuItem("diff", diffMenuItemAction)),
 		//file,
 		//fyne.NewMenu("Edit", cutItem, copyItem, pasteItem, fyne.NewMenuItemSeparator(), findItem),
 		//helpMenu,
@@ -124,6 +96,15 @@ func (u *ui) makeMenu() {
 	//	main.Refresh()
 	//}
 	u.mainWindow.SetMainMenu(main)
+}
+
+func diffMenuItemAction() {
+	cmpWindow := fyne.CurrentApp().NewWindow("diff")
+	cmpWindow.Resize(fyne.NewSize(1920, 1080))
+	page := pages.NewDiffPage().Build()
+	cmpWindow.SetContent(page)
+	cmpWindow.CenterOnScreen()
+	cmpWindow.Show()
 }
 
 func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
