@@ -1,109 +1,18 @@
 package pages
 
 import (
+	"context"
 	"fyne.io/fyne/v2"
 )
 
 func (u *MainWindow) makeMenu() {
-	//a, w := u.app, u.mainWindow
-	//newItem := fyne.NewMenuItem("New", nil)
-	//checkedItem := fyne.NewMenuItem("Checked", nil)
-	//checkedItem.Checked = true
-	//disabledItem := fyne.NewMenuItem("Disabled", nil)
-	//disabledItem.Disabled = true
-	//otherItem := fyne.NewMenuItem("Other", nil)
-	//mailItem := fyne.NewMenuItem("Mail", func() { fmt.Println("Menu New->Other->Mail") })
-	//mailItem.Icon = theme.MailComposeIcon()
-	//otherItem.ChildMenu = fyne.NewMenu("",
-	//	fyne.NewMenuItem("Project", func() { fmt.Println("Menu New->Other->Project") }),
-	//	mailItem,
-	//)
-	//fileItem := fyne.NewMenuItem("File", func() { fmt.Println("Menu New->File") })
-	//fileItem.Icon = theme.FileIcon()
-	//dirItem := fyne.NewMenuItem("Directory", func() { fmt.Println("Menu New->Directory") })
-	//dirItem.Icon = theme.FolderIcon()
-	//newItem.ChildMenu = fyne.NewMenu("",
-	//	fileItem,
-	//	dirItem,
-	//	otherItem,
-	//)
-	//
-	//openSettings := func() {
-	//	w := a.NewWindow("Fyne Settings")
-	//	w.SetContent(settings.NewSettings().LoadAppearanceScreen(w))
-	//	w.Resize(fyne.NewSize(480, 480))
-	//	w.Show()
-	//}
-	//settingsItem := fyne.NewMenuItem("Settings", openSettings)
-	//settingsShortcut := &desktop.CustomShortcut{KeyName: fyne.KeyComma, Modifier: fyne.KeyModifierShortcutDefault}
-	//settingsItem.Shortcut = settingsShortcut
-	//w.Canvas().AddShortcut(settingsShortcut, func(shortcut fyne.Shortcut) {
-	//	openSettings()
-	//})
-	//
-	//cutShortcut := &fyne.ShortcutCut{Clipboard: w.Clipboard()}
-	//cutItem := fyne.NewMenuItem("Cut", func() {
-	//	shortcutFocused(cutShortcut, w)
-	//})
-	//cutItem.Shortcut = cutShortcut
-	//copyShortcut := &fyne.ShortcutCopy{Clipboard: w.Clipboard()}
-	//copyItem := fyne.NewMenuItem("Copy", func() {
-	//	shortcutFocused(copyShortcut, w)
-	//})
-	//copyItem.Shortcut = copyShortcut
-	//pasteShortcut := &fyne.ShortcutPaste{Clipboard: w.Clipboard()}
-	//pasteItem := fyne.NewMenuItem("Paste", func() {
-	//	shortcutFocused(pasteShortcut, w)
-	//})
-	//pasteItem.Shortcut = pasteShortcut
-	//performFind := func() { fmt.Println("Menu Find") }
-	//findItem := fyne.NewMenuItem("Find", performFind)
-	//findItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierShortcutDefault | fyne.KeyModifierAlt | fyne.KeyModifierShift | fyne.KeyModifierControl | fyne.KeyModifierSuper}
-	//w.Canvas().AddShortcut(findItem.Shortcut, func(shortcut fyne.Shortcut) {
-	//	performFind()
-	//})
-	//
-	//helpMenu := fyne.NewMenu("Help",
-	//	fyne.NewMenuItem("Documentation", func() {
-	//		u, _ := url.Parse("https://developer.fyne.io")
-	//		_ = a.OpenURL(u)
-	//	}),
-	//	fyne.NewMenuItem("Support", func() {
-	//		u, _ := url.Parse("https://fyne.io/support/")
-	//		_ = a.OpenURL(u)
-	//	}),
-	//	fyne.NewMenuItemSeparator(),
-	//	fyne.NewMenuItem("Sponsor", func() {
-	//		u, _ := url.Parse("https://fyne.io/sponsor/")
-	//		_ = a.OpenURL(u)
-	//	}))
-	//
-	//// a quit item will be appended to our first (File) menu
-	//file := fyne.NewMenu("File", newItem, checkedItem, disabledItem)
-	//device := fyne.CurrentDevice()
-	//if !device.IsMobile() && !device.IsBrowser() {
-	//	file.Items = append(file.Items, fyne.NewMenuItemSeparator(), settingsItem)
-	//}
-	main := fyne.NewMainMenu(
-		fyne.NewMenu("Tool", fyne.NewMenuItem("diff", diffMenuItemAction)),
-		//file,
-		//fyne.NewMenu("Edit", cutItem, copyItem, pasteItem, fyne.NewMenuItemSeparator(), findItem),
-		//helpMenu,
-	)
-	//checkedItem.Action = func() {
-	//	checkedItem.Checked = !checkedItem.Checked
-	//	main.Refresh()
-	//}
+	mnTool := fyne.NewMenu("Tool", fyne.NewMenuItem("diff", func() {
+		u.AddTab("Diff", func(ctx context.Context) fyne.CanvasObject {
+			return u.DiffPage.Build()
+		})
+	}))
+	main := fyne.NewMainMenu(mnTool)
 	u.mainWindow.SetMainMenu(main)
-}
-
-func diffMenuItemAction() {
-	cmpWindow := fyne.CurrentApp().NewWindow("diff")
-	cmpWindow.Resize(fyne.NewSize(1920, 1080))
-	page := NewDiffPage().Build()
-	cmpWindow.SetContent(page)
-	cmpWindow.CenterOnScreen()
-	cmpWindow.Show()
 }
 
 func shortcutFocused(s fyne.Shortcut, w fyne.Window) {

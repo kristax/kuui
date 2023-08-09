@@ -13,5 +13,6 @@ func init() {
 		pages.NewMainWindow(),
 		pages.NewWelcomePage(),
 		pages.NewNav(),
+		pages.NewDiffPage(),
 	)
 }

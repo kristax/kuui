@@ -185,6 +185,7 @@ func (p *LogListPage) AddItem(txt string) {
 	if compile.MatchString(txt) {
 		txt = compile.ReplaceAllString(txt, "**")
 	}
+	//txt = strings.ReplaceAll(txt, " ", "\n")
 	content := widgets.NewTappableLabel(txt)
 	content.Wrapping = fyne.TextWrapWord
 	content.OnTapped = p.contentTapped(txt)
