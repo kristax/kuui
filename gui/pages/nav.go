@@ -43,7 +43,7 @@ func (u *Nav) Init() error {
 	}
 	u.onPodSelected = func(pod *v1.Pod) {
 		u.MainWindow.AddTab(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			return newLogListPage(u.MainWindow, pod).Build(ctx)
+			return newLogListPage(u.MainWindow, []*v1.Pod{pod}).Build(ctx)
 		})
 	}
 	return u.loadResources()

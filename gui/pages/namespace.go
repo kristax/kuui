@@ -32,20 +32,8 @@ func (p *NamespacePage) Build(ctx context.Context) fyne.CanvasObject {
 	scroll := container.NewVScroll(grid)
 
 	grid.Add(p.buildDeploymentTable(ctx))
-	grid.Add(p.buildPodsTable(ctx))
+	grid.Add(p.buildPodsCard(ctx))
 	grid.Add(p.buildServicesTable(ctx))
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.Tick(time.Second):
-				grid.Objects[1] = p.buildPodsTable(ctx)
-				grid.Refresh()
-			}
-		}
-	}()
 
 	return scroll
 }
@@ -152,13 +140,86 @@ func (p *NamespacePage) buildDeploymentTable(ctx context.Context) *widget.Card {
 	return widget.NewCard("Deployments", "", table)
 }
 
-func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
+func (p *NamespacePage) buildPodsCard(ctx context.Context) *widget.Card {
 	pods, err := p.mainWindow.KuCli.GetPods(ctx, p.namespace)
 	if err != nil {
 		fyne.LogError("get deployments", err)
-		return widget.NewCard("", "", nil)
+		return nil
 	}
 
+	var selectedPods []*coreV1.Pod
+	entryPods := widget.NewEntry()
+	var refreshEntryPods = func() {
+		names := lo.Map(selectedPods, func(item *coreV1.Pod, _ int) string {
+			return item.GetName()
+		})
+		entryPods.SetText(strings.Join(names, ", "))
+	}
+	btnAll := widget.NewButton("All", func() {
+		selectedPods = make([]*coreV1.Pod, 0, len(pods))
+		selectedPods = lo.Map(pods, func(item coreV1.Pod, _ int) *coreV1.Pod {
+			return &item
+		})
+		refreshEntryPods()
+	})
+
+	var onSelectFn = func(id widget.TableCellID, table *widget.Table) {
+		defer refreshEntryPods()
+		defer table.Unselect(id)
+		selPod := pods[id.Row]
+		contains := lo.ContainsBy(selectedPods, func(item *coreV1.Pod) bool {
+			return selPod.GetName() == item.GetName()
+		})
+		if contains {
+			selectedPods = lo.Reject(selectedPods, func(item *coreV1.Pod, _ int) bool {
+				return selPod.GetName() == item.GetName()
+			})
+			return
+		}
+		pod, err := p.mainWindow.KuCli.GetPod(ctx, p.namespace, selPod.GetName())
+		if err != nil {
+			fyne.LogError("get pod", err)
+			return
+		}
+		selectedPods = append(selectedPods, pod)
+	}
+
+	table := buildPodsTable(pods, onSelectFn)
+
+	btnLogs := widget.NewButton("Logs", func() {
+		if len(selectedPods) > 0 {
+			p.mainWindow.AddTab(selectedPods[0].GetName()+"...", func(ctx context.Context) fyne.CanvasObject {
+				return newLogListPage(p.mainWindow, selectedPods).Build(ctx)
+			})
+		}
+	})
+
+	header := container.NewBorder(nil, nil, nil, container.NewHBox(btnAll, btnLogs), entryPods)
+	stack := container.NewStack(table)
+	border := container.NewBorder(header, nil, nil, nil, stack)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.Tick(time.Second):
+				pods, err = p.mainWindow.KuCli.GetPods(ctx, p.namespace)
+				if err != nil {
+					fyne.LogError("get deployments", err)
+					return
+				}
+				stack.RemoveAll()
+				stack.Add(buildPodsTable(pods, onSelectFn))
+				stack.Refresh()
+			}
+		}
+	}()
+
+	return widget.NewCard("Pods", "", border)
+}
+
+func buildPodsTable(pods []coreV1.Pod, onSelect func(id widget.TableCellID, table *widget.Table)) *widget.Table {
 	table := buildTable(len(pods), 4, func(id widget.TableCellID, label *widget.Label) {
 		switch id.Col {
 		case 0:
@@ -185,20 +246,9 @@ func (p *NamespacePage) buildPodsTable(ctx context.Context) *widget.Card {
 				label.SetText(fmt.Sprintf("%d", pod.Status.ContainerStatuses[0].RestartCount))
 			}
 		}
-	}, func(id widget.TableCellID, table *widget.Table) {
-		selPod := pods[id.Row]
-		pod, err := p.mainWindow.KuCli.GetPod(ctx, p.namespace, selPod.GetName())
-		if err != nil {
-			fyne.LogError("get pod", err)
-			return
-		}
-		p.mainWindow.AddTab(pod.GetName(), func(ctx context.Context) fyne.CanvasObject {
-			return newLogListPage(p.mainWindow, pod).Build(ctx)
-		})
-		table.Unselect(id)
-	})
+	}, onSelect)
 
-	return widget.NewCard("Pods", "", table)
+	return table
 }
 
 func (p *NamespacePage) buildServicesTable(ctx context.Context) *widget.Card {

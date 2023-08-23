@@ -19,7 +19,7 @@ import (
 
 type LogListPage struct {
 	mainWindow *MainWindow
-	pod        *v1.Pod
+	pods       []*v1.Pod
 
 	logDetail *LogDetailPage
 
@@ -40,12 +40,12 @@ type LogListPage struct {
 	isPrint bool
 }
 
-func newLogListPage(mainWindow *MainWindow, pod *v1.Pod) *LogListPage {
+func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 	list := container.NewVBox()
 	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
 	return &LogListPage{
 		mainWindow: mainWindow,
-		pod:        pod,
+		pods:       pods,
 		list:       list,
 		logDetail:  newLogDetailPage(mainWindow),
 		vScroll:    container.NewScroll(list),
@@ -54,9 +54,9 @@ func newLogListPage(mainWindow *MainWindow, pod *v1.Pod) *LogListPage {
 		tbiPrint:   widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
 		tbiClear:   widget.NewToolbarAction(theme.DeleteIcon(), nil),
 		pause:      false,
-		line:       100,
+		line:       100 * len(pods),
 		search:     "",
-		logCh:      nil,
+		logCh:      make(chan string, 0),
 		temp:       nil,
 		isPrint:    isPrint,
 	}
@@ -90,9 +90,12 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 
 		//delete
 		p.tbiDelete.OnActivated = func() {
-			err := p.mainWindow.KuCli.DeletePod(ctx, p.pod.GetNamespace(), p.pod.GetName())
-			if err != nil {
-				p.logCh <- fmt.Sprintf("delete pod failed: %v", err)
+			for _, pod := range p.pods {
+				err := p.mainWindow.KuCli.DeletePod(ctx, pod.GetNamespace(), pod.GetName())
+				if err != nil {
+					p.logCh <- fmt.Sprintf("delete pod failed: %v", err)
+				}
+				p.logCh <- fmt.Sprintf("delete pod succeeded: %s/%s", pod.GetNamespace(), pod.GetName())
 			}
 		}
 
@@ -122,9 +125,11 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 
 	txtLine.SetText(strconv.Itoa(p.line))
 	txtLine.OnSubmitted = func(s string) {
-		d, _ := strconv.Atoi(s)
-		p.line = d
 		p.reloadLog(ctx)
+	}
+	txtLine.OnChanged = func(s string) {
+		d, _ := strconv.Atoi(s)
+		p.line = d * len(p.pods)
 	}
 	txtSearch.OnSubmitted = func(s string) {
 		p.search = s
@@ -136,13 +141,20 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 }
 
 func (p *LogListPage) run(ctx context.Context) {
-	var err error
-	p.logCh, err = p.mainWindow.KuCli.TailfLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
-	if err != nil {
-		fyne.LogError("tail logs failed", err)
-		p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
-		return
+	for _, pod := range p.pods {
+		go func(pod *v1.Pod) {
+			ch, err := p.mainWindow.KuCli.TailfLogs(ctx, pod.GetNamespace(), pod.GetName(), int64(p.line/len(p.pods)))
+			if err != nil {
+				fyne.LogError("tail logs failed", err)
+				p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
+				return
+			}
+			for s := range ch {
+				p.logCh <- pod.GetName() + " | " + s
+			}
+		}(pod)
 	}
+
 	for log := range p.logCh {
 		if p.pause {
 			p.temp = append(p.temp, log)
@@ -163,16 +175,18 @@ func (p *LogListPage) reloadLog(ctx context.Context) {
 	if p.pause {
 		p.tbiPause.OnActivated()
 	}
-	//query all logs
-	logs, err := p.mainWindow.KuCli.TailLogs(ctx, p.pod.GetNamespace(), p.pod.GetName(), int64(p.line))
-	if err != nil {
-		p.logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
-		return
-	}
 	//clear screen
 	p.list.RemoveAll()
-	for _, log := range logs {
-		p.logCh <- log
+	//query all logs
+	for _, pod := range p.pods {
+		logs, err := p.mainWindow.KuCli.TailLogs(ctx, pod.GetNamespace(), pod.GetName(), int64(p.line/len(p.pods)))
+		if err != nil {
+			p.logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
+			return
+		}
+		for _, log := range logs {
+			p.logCh <- log
+		}
 	}
 }
 
@@ -195,6 +209,6 @@ func (p *LogListPage) AddItem(txt string) {
 
 func (p *LogListPage) contentTapped(txt string) func() {
 	return func() {
-		p.logDetail.Show(p.pod.GetName(), txt)
+		p.logDetail.Show(fas.TernaryOp(len(p.pods) == 1, p.pods[0].GetName(), "M:"+p.pods[0].GetNamespace()), txt)
 	}
 }

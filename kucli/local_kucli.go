@@ -117,7 +117,7 @@ func (c *localCli) TailfLogs(ctx context.Context, namespace, podName string, tai
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan string, 10)
+	ch := make(chan string, tailLines)
 	go func() {
 		defer close(ch)
 		reader := bufio.NewReader(stream)
