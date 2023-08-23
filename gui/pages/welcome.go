@@ -47,7 +47,7 @@ func (p *WelcomePage) newList() *widget.List {
 	}
 	data.Set(collections)
 	go func() {
-		for range time.Tick(time.Second) {
+		for range time.Tick(time.Second * 2) {
 			collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
 			data.Set(collections)
 		}
