@@ -155,13 +155,6 @@ func (p *NamespacePage) buildPodsCard(ctx context.Context) *widget.Card {
 		})
 		entryPods.SetText(strings.Join(names, ", "))
 	}
-	btnAll := widget.NewButton("All", func() {
-		selectedPods = make([]*coreV1.Pod, 0, len(pods))
-		selectedPods = lo.Map(pods, func(item coreV1.Pod, _ int) *coreV1.Pod {
-			return &item
-		})
-		refreshEntryPods()
-	})
 
 	var onSelectFn = func(id widget.TableCellID, table *widget.Table) {
 		defer refreshEntryPods()
@@ -186,15 +179,31 @@ func (p *NamespacePage) buildPodsCard(ctx context.Context) *widget.Card {
 
 	table := buildPodsTable(pods, onSelectFn)
 
-	btnLogs := widget.NewButton("Logs", func() {
+	var openLogPageFn = func() {
 		if len(selectedPods) > 0 {
 			p.mainWindow.AddTab(selectedPods[0].GetName()+"...", func(ctx context.Context) fyne.CanvasObject {
 				return newLogListPage(p.mainWindow, selectedPods).Build(ctx)
 			})
 		}
+	}
+
+	entryPods.OnSubmitted = func(s string) {
+		openLogPageFn()
+	}
+	btnAll := widget.NewButton("All", func() {
+		selectedPods = make([]*coreV1.Pod, 0, len(pods))
+		selectedPods = lo.Map(pods, func(item coreV1.Pod, _ int) *coreV1.Pod {
+			return &item
+		})
+		refreshEntryPods()
+	})
+	btnLogs := widget.NewButton("Logs", openLogPageFn)
+	btnClear := widget.NewButton("Clear", func() {
+		selectedPods = nil
+		refreshEntryPods()
 	})
 
-	header := container.NewBorder(nil, nil, nil, container.NewHBox(btnAll, btnLogs), entryPods)
+	header := container.NewBorder(nil, nil, nil, container.NewHBox(btnAll, btnClear, btnLogs), entryPods)
 	stack := container.NewStack(table)
 	border := container.NewBorder(header, nil, nil, nil, stack)
 
