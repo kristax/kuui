@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type LogListPage struct {
@@ -23,8 +24,9 @@ type LogListPage struct {
 
 	logDetail *LogDetailPage
 
-	list    *fyne.Container
-	vScroll *container.Scroll
+	list              *fyne.Container
+	vScroll           *container.Scroll
+	minScrollDuration time.Duration
 
 	tbiPause  *widget.ToolbarAction
 	tbiDelete *widget.ToolbarAction
@@ -44,21 +46,22 @@ func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 	list := container.NewVBox()
 	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
 	return &LogListPage{
-		mainWindow: mainWindow,
-		pods:       pods,
-		list:       list,
-		logDetail:  newLogDetailPage(mainWindow),
-		vScroll:    container.NewScroll(list),
-		tbiPause:   widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
-		tbiDelete:  widget.NewToolbarAction(theme.MediaStopIcon(), nil),
-		tbiPrint:   widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
-		tbiClear:   widget.NewToolbarAction(theme.DeleteIcon(), nil),
-		pause:      false,
-		line:       100 * len(pods),
-		search:     "",
-		logCh:      make(chan string, 0),
-		temp:       nil,
-		isPrint:    isPrint,
+		mainWindow:        mainWindow,
+		pods:              pods,
+		list:              list,
+		logDetail:         newLogDetailPage(mainWindow),
+		vScroll:           container.NewScroll(list),
+		minScrollDuration: time.Millisecond * 10,
+		tbiPause:          widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
+		tbiDelete:         widget.NewToolbarAction(theme.MediaStopIcon(), nil),
+		tbiPrint:          widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
+		tbiClear:          widget.NewToolbarAction(theme.DeleteIcon(), nil),
+		pause:             false,
+		line:              100 * len(pods),
+		search:            "",
+		logCh:             make(chan string, 0),
+		temp:              nil,
+		isPrint:           isPrint,
 	}
 }
 
@@ -146,7 +149,7 @@ func (p *LogListPage) run(ctx context.Context) {
 			ch, err := p.mainWindow.KuCli.TailfLogs(ctx, pod.GetNamespace(), pod.GetName(), int64(p.line/len(p.pods)))
 			if err != nil {
 				fyne.LogError("tail logs failed", err)
-				p.AddItem(fmt.Sprintf("tail logs failed: %v", err))
+				p.logCh <- fmt.Sprintf("tail logs failed: %v", err)
 				return
 			}
 			for s := range ch {
@@ -171,7 +174,7 @@ func (p *LogListPage) run(ctx context.Context) {
 		if len(p.list.Objects) > p.line {
 			p.list.Remove(p.list.Objects[0])
 		}
-		p.AddItem(log)
+		p.addItem(log)
 	}
 }
 
@@ -202,18 +205,23 @@ func (p *LogListPage) reloadLog(ctx context.Context) {
 
 var compile = regexp.MustCompile(`\[\d+(;\d+)*m`)
 
-func (p *LogListPage) AddItem(txt string) {
+func (p *LogListPage) addItem(txt string) {
+	start := time.Now()
 	if p.isPrint {
-		os.Stdout.WriteString(txt)
+		os.Stdout.WriteString(txt + "\n")
 	}
 	if compile.MatchString(txt) {
 		txt = compile.ReplaceAllString(txt, "**")
 	}
 	//txt = strings.ReplaceAll(txt, " ", "\n")
 	content := widgets.NewTappableLabel(txt)
-	content.Wrapping = fyne.TextWrapWord
+	content.Wrapping = fyne.TextWrapBreak
 	content.OnTapped = p.contentTapped(txt)
 	p.list.Add(content)
+	dur := time.Now().Sub(start)
+	if sub := p.minScrollDuration - dur; sub > 0 {
+		time.Sleep(sub)
+	}
 	p.vScroll.ScrollToBottom()
 }
 

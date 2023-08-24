@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"regexp"
 	"strings"
 )
 
@@ -24,6 +25,7 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 	tbiUndo := widget.NewToolbarAction(theme.ContentUndoIcon(), nil)
 	tbiRedo := widget.NewToolbarAction(theme.ContentRedoIcon(), nil)
 	tbiFormat := widget.NewToolbarAction(theme.VisibilityIcon(), nil)
+	tbiCut := widget.NewToolbarAction(theme.ContentCutIcon(), nil)
 	toolbar := widget.NewToolbar()
 	content := container.NewBorder(toolbar, nil, nil, nil, txtLog)
 
@@ -35,7 +37,7 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 	}
 	toolbar.Append(tbiRedo)
 
-	tbiFormat.OnActivated = func() {
+	tbiCut.OnActivated = func() {
 		txt, _ := logData.Get()
 		s, err := cutJson(txt)
 		if err != nil {
@@ -43,17 +45,26 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 		}
 		logData.Set(s)
 	}
-	toolbar.Append(tbiFormat)
-
-	txtLog.Bind(logData)
-	txtLog.Wrapping = fyne.TextWrapWord
-	txtLog.OnChanged = func(s string) {
+	toolbar.Append(tbiCut)
+	tbiFormat.OnActivated = func() {
+		s, _ := logData.Get()
 		f, err := formatLog(s)
 		if err != nil {
 			f = s
 		}
 		logData.Set(f)
 	}
+	toolbar.Append(tbiFormat)
+
+	txtLog.Bind(logData)
+	txtLog.Wrapping = fyne.TextWrapWord
+	//txtLog.OnChanged = func(s string) {
+	//	f, err := formatLog(s)
+	//	if err != nil {
+	//		f = s
+	//	}
+	//	logData.Set(f)
+	//}
 	return &LogDetailPage{
 		mainWindow: mainWindow,
 		logData:    logData,
@@ -81,6 +92,7 @@ func formatLog(txt string) (string, error) {
 		}
 		return string(bytes), nil
 	}
+	txt = prettySQL(txt)
 	return txt, nil
 }
 
@@ -100,4 +112,15 @@ func cutJson(s string) (string, error) {
 	s = strings.ReplaceAll(s, `\"`, `"`)
 	s = strings.ReplaceAll(s, `\n`, ``)
 	return s, nil
+}
+
+func prettySQL(sql string) string {
+	sql = strings.TrimSpace(sql)
+	re := regexp.MustCompile(`(?i)(SELECT|FROM|WHERE|LEFT\s+JOIN|INNER\s+JOIN|RIGHT\s+JOIN|ORDER\s+BY|GROUP\s+BY|LIMIT|SET|VALUES|UPDATE|HAVING|ADD\s+COLUMN|DROP\s+COLUMN|CREATE\s+TABLE|ALTER\s+TABLE|DELETE\s+FROM|UNION\s+ALL|UNION|EXCEPT|INTERSECT)`)
+	sql = re.ReplaceAllString(sql, "\n$1")
+
+	re2 := regexp.MustCompile(`(?i)(\,|\)')`)
+	sql = re2.ReplaceAllString(sql, "$1\n")
+
+	return sql
 }
