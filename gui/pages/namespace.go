@@ -181,7 +181,11 @@ func (p *NamespacePage) buildPodsCard(ctx context.Context) *widget.Card {
 
 	var openLogPageFn = func() {
 		if len(selectedPods) > 0 {
-			p.mainWindow.AddTab(selectedPods[0].GetName()+"...", func(ctx context.Context) fyne.CanvasObject {
+			var name = selectedPods[0].GetName()
+			if len(selectedPods) > 1 {
+				name += "..."
+			}
+			p.mainWindow.AddTab(name, func(ctx context.Context) fyne.CanvasObject {
 				return newLogListPage(p.mainWindow, selectedPods).Build(ctx)
 			})
 		}

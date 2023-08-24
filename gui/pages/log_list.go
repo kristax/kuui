@@ -15,13 +15,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type LogListPage struct {
 	mainWindow *MainWindow
 	pods       []*v1.Pod
-	location   *time.Location
 
 	logDetail *LogDetailPage
 
@@ -45,14 +43,9 @@ type LogListPage struct {
 func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 	list := container.NewVBox()
 	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
-	location, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		panic(err)
-	}
 	return &LogListPage{
 		mainWindow: mainWindow,
 		pods:       pods,
-		location:   location,
 		list:       list,
 		logDetail:  newLogDetailPage(mainWindow),
 		vScroll:    container.NewScroll(list),
@@ -157,7 +150,7 @@ func (p *LogListPage) run(ctx context.Context) {
 				return
 			}
 			for s := range ch {
-				var els = []string{time.Now().In(p.location).Format("2006-01-02 15:04:05.000")}
+				var els []string
 				if len(p.pods) > 1 {
 					els = append(els, pod.GetName())
 				}
@@ -197,7 +190,7 @@ func (p *LogListPage) reloadLog(ctx context.Context) {
 			return
 		}
 		for _, log := range logs {
-			var els = []string{time.Now().In(p.location).Format("2006-01-02 15:04:05.000")}
+			var els []string
 			if len(p.pods) > 1 {
 				els = append(els, pod.GetName())
 			}
