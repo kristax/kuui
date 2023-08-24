@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -29,11 +30,27 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 	toolbar := widget.NewToolbar()
 	content := container.NewBorder(toolbar, nil, nil, nil, txtLog)
 
+	var (
+		histories    []string
+		historyIndex = 0
+		undoMode     = false
+	)
+
 	tbiUndo.OnActivated = func() {
+		if historyIndex-1 >= 0 {
+			undoMode = true
+			historyIndex -= 1
+			logData.Set(histories[historyIndex])
+		}
 	}
 	toolbar.Append(tbiUndo)
 
 	tbiRedo.OnActivated = func() {
+		if historyIndex+1 < len(histories) {
+			undoMode = true
+			historyIndex += 1
+			logData.Set(histories[historyIndex])
+		}
 	}
 	toolbar.Append(tbiRedo)
 
@@ -58,13 +75,16 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 
 	txtLog.Bind(logData)
 	txtLog.Wrapping = fyne.TextWrapWord
-	//txtLog.OnChanged = func(s string) {
-	//	f, err := formatLog(s)
-	//	if err != nil {
-	//		f = s
-	//	}
-	//	logData.Set(f)
-	//}
+
+	txtLog.OnChanged = func(s string) {
+		if undoMode {
+			undoMode = false
+		} else {
+			histories = append(histories, s)
+			historyIndex = len(histories) - 1
+			fmt.Println(len(histories))
+		}
+	}
 	return &LogDetailPage{
 		mainWindow: mainWindow,
 		logData:    logData,
