@@ -3,7 +3,6 @@ package pages
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -82,7 +81,6 @@ func newLogDetailPage(mainWindow *MainWindow) *LogDetailPage {
 		} else {
 			histories = append(histories, s)
 			historyIndex = len(histories) - 1
-			fmt.Println(len(histories))
 		}
 	}
 	return &LogDetailPage{
