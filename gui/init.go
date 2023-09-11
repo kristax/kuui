@@ -14,5 +14,6 @@ func init() {
 		pages.NewWelcomePage(),
 		pages.NewNav(),
 		pages.NewDiffPage(),
+		pages.NewRemoveDupPage(),
 	)
 }

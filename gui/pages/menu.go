@@ -3,15 +3,26 @@ package pages
 import (
 	"context"
 	"fyne.io/fyne/v2"
+	"github.com/samber/lo"
 )
 
 func (u *MainWindow) makeMenu() {
-	mnTool := fyne.NewMenu("Tool", fyne.NewMenuItem("diff", func() {
-		u.AddTab("Diff", func(ctx context.Context) fyne.CanvasObject {
-			return u.DiffPage.Build()
+	itemsGroup := lo.GroupBy[MenuItem, string](u.MenuItems, func(item MenuItem) string {
+		return item.Menu()
+	})
+
+	var menus []*fyne.Menu
+	for menu, items := range itemsGroup {
+		menuItems := lo.Map[MenuItem, *fyne.MenuItem](items, func(item MenuItem, _ int) *fyne.MenuItem {
+			return fyne.NewMenuItem(item.Name(), func() {
+				u.AddTab(item.Name(), func(ctx context.Context) fyne.CanvasObject {
+					return item.Build()
+				})
+			})
 		})
-	}))
-	main := fyne.NewMainMenu(mnTool)
+		menus = append(menus, fyne.NewMenu(menu, menuItems...))
+	}
+	main := fyne.NewMainMenu(menus...)
 	u.mainWindow.SetMainMenu(main)
 }
 

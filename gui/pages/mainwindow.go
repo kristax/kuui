@@ -12,7 +12,8 @@ type MainWindow struct {
 	KuCli       kucli.KuCli  `wire:""`
 	WelcomePage *WelcomePage `wire:""`
 	Nav         *Nav         `wire:""`
-	DiffPage    *DiffPage    `wire:""`
+	//DiffPage    *DiffPage    `wire:""`
+	MenuItems []MenuItem `wire:""`
 
 	mainWindow    fyne.Window
 	existTabItems map[string]*tabContent

@@ -17,6 +17,14 @@ type DiffPage struct {
 	main *fyne.Container
 }
 
+func (p *DiffPage) Menu() string {
+	return "Tool"
+}
+
+func (p *DiffPage) Name() string {
+	return "Diff"
+}
+
 func NewDiffPage() *DiffPage {
 	return &DiffPage{
 		in1:  widget.NewMultiLineEntry(),
