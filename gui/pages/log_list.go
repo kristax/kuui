@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,7 +39,7 @@ type LogListPage struct {
 	search string
 
 	logCh   chan string
-	temp    []string
+	pauseWg sync.WaitGroup
 	isPrint bool
 }
 
@@ -51,7 +52,7 @@ func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 		list:              list,
 		logDetail:         newLogDetailPage(mainWindow),
 		vScroll:           container.NewScroll(list),
-		minScrollDuration: time.Millisecond * 10,
+		minScrollDuration: time.Millisecond * 5,
 		tbiPause:          widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
 		tbiDelete:         widget.NewToolbarAction(theme.MediaStopIcon(), nil),
 		tbiPrint:          widget.NewToolbarAction(fas.TernaryOp(isPrint, theme.RadioButtonCheckedIcon(), theme.RadioButtonIcon()), nil),
@@ -60,7 +61,6 @@ func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 		line:              100 * len(pods),
 		search:            "",
 		logCh:             make(chan string, 0),
-		temp:              nil,
 		isPrint:           isPrint,
 	}
 }
@@ -78,14 +78,10 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 		p.tbiPause.OnActivated = func() {
 			p.pause = !p.pause
 			if p.pause {
+				p.pauseWg.Add(1)
 				p.tbiPause.SetIcon(theme.MediaPlayIcon())
 			} else {
-				if len(p.temp) != 0 {
-					for _, log := range p.temp {
-						p.logCh <- log
-					}
-					p.temp = []string{}
-				}
+				p.pauseWg.Done()
 				p.tbiPause.SetIcon(theme.MediaPauseIcon())
 			}
 			toolbar.Refresh()
@@ -105,7 +101,7 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 		//clear
 		p.tbiClear.OnActivated = func() {
 			p.list.RemoveAll()
-			p.temp = []string{}
+			//p.temp = []string{}
 		}
 
 		//refresh
@@ -164,10 +160,7 @@ func (p *LogListPage) run(ctx context.Context) {
 	}
 
 	for log := range p.logCh {
-		if p.pause {
-			p.temp = append(p.temp, log)
-			continue
-		}
+		p.pauseWg.Wait()
 		if p.search != "" && !strings.Contains(strings.ToLower(log), strings.ToLower(p.search)) {
 			continue
 		}
