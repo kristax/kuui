@@ -8,9 +8,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kristax/kuui/gui/channels"
 	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
 	"github.com/kristax/kuui/kucli"
+	"github.com/kristax/kuui/streamer"
 	"github.com/kristax/kuui/themes"
 	"github.com/kristax/kuui/util/fas"
 	"github.com/samber/lo"
@@ -22,8 +24,9 @@ import (
 )
 
 type Nav struct {
-	MainWindow *MainWindow `wire:""`
-	KuCli      kucli.KuCli `wire:""`
+	MainWindow *MainWindow     `wire:""`
+	KuCli      kucli.KuCli     `wire:""`
+	Streamer   streamer.Client `wire:""`
 
 	pods                []v1.Pod
 	navItems            map[string]*v1.Pod
@@ -189,7 +192,7 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 			if contains {
 				btn.SetIcon(theme.CheckButtonCheckedIcon())
 			}
-			btn.OnTapped = manageCollection(btn, id, &contains)
+			btn.OnTapped = u.manageCollection(btn, id, &contains)
 		} else {
 			lb = object.(*widget.Label)
 		}
@@ -213,7 +216,7 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	return tree
 }
 
-func manageCollection(btn *widget.Button, id string, contains *bool) func() {
+func (u *Nav) manageCollection(btn *widget.Button, id string, contains *bool) func() {
 	return func() {
 		*contains = !*contains
 		collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
@@ -230,6 +233,7 @@ func manageCollection(btn *widget.Button, id string, contains *bool) func() {
 			return collections[i] < collections[j]
 		})
 		fyne.CurrentApp().Preferences().SetStringList(preference.NSCollections, collections)
+		u.Streamer.Send(context.Background(), channels.CollectionsUpdate, nil)
 	}
 }
 

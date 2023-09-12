@@ -12,8 +12,7 @@ type MainWindow struct {
 	KuCli       kucli.KuCli  `wire:""`
 	WelcomePage *WelcomePage `wire:""`
 	Nav         *Nav         `wire:""`
-	//DiffPage    *DiffPage    `wire:""`
-	MenuItems []MenuItem `wire:""`
+	MenuItems   []MenuItem   `wire:""`
 
 	mainWindow    fyne.Window
 	existTabItems map[string]*tabContent
@@ -36,7 +35,8 @@ func (u *MainWindow) Init() error {
 	u.mainWindow = u.App.NewWindow("KuUi")
 	u.tabs = container.NewDocTabs()
 
-	u.AddTab("Welcome", func(ctx context.Context) fyne.CanvasObject {
+	const welcomePageText = "Home"
+	u.AddTab(welcomePageText, func(ctx context.Context) fyne.CanvasObject {
 		return u.WelcomePage.Build()
 	})
 	u.tabs.OnClosed = func(item *container.TabItem) {
@@ -69,8 +69,8 @@ func (u *MainWindow) AddTab(name string, content func(ctx context.Context) fyne.
 		}
 		u.existTabItems[name] = tc
 	}
-	u.tabs.Select(tc.Item)
 	u.tabs.Refresh()
+	u.tabs.Select(tc.Item)
 }
 
 func (u *MainWindow) Content() fyne.Window {

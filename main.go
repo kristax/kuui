@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/go-kid/ioc"
-	_ "github.com/kristax/kuui/gui"
 	"log"
 )
 
