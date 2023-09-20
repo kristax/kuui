@@ -27,22 +27,21 @@ func NewThemePage() *ThemePage {
 	return &ThemePage{}
 }
 
-func (p *ThemePage) Build() fyne.CanvasObject {
+func (p *ThemePage) Init() error {
 	app := fyne.CurrentApp()
 	isDark := app.Preferences().BoolWithFallback(preference.ThemeDark, app.Settings().ThemeVariant() == theme.VariantDark)
 	app.Settings().SetTheme(fas.TernaryOp(isDark, themes.DarkTheme(), themes.LightTheme()))
-	var changeTheme = func() {
+	return nil
+}
+
+func (p *ThemePage) Build() fyne.CanvasObject {
+	app := fyne.CurrentApp()
+	var changeTheme = func(isDark bool) {
 		app.Preferences().SetBool(preference.ThemeDark, isDark)
 		app.Settings().SetTheme(fas.TernaryOp(isDark, themes.DarkTheme(), themes.LightTheme()))
 	}
-	themeDark := container.NewBorder(nil, widget.NewButton("Set", func() {
-		isDark = true
-		changeTheme()
-	}), nil, nil, canvas.NewRectangle(color.Black))
-	themeLight := container.NewBorder(nil, widget.NewButton("Set", func() {
-		isDark = false
-		changeTheme()
-	}), nil, nil, canvas.NewRectangle(color.White))
+	themeDark := container.NewBorder(nil, widget.NewButton("Set", func() { changeTheme(true) }), nil, nil, canvas.NewRectangle(color.Black))
+	themeLight := container.NewBorder(nil, widget.NewButton("Set", func() { changeTheme(false) }), nil, nil, canvas.NewRectangle(color.White))
 	return container.NewAdaptiveGrid(2,
 		widget.NewCard("Default Theme", "Dark", themeDark),
 		widget.NewCard("Default Theme", "Light", themeLight),
