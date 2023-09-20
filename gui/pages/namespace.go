@@ -216,7 +216,7 @@ func (p *NamespacePage) buildPodsCard(ctx context.Context) *widget.Card {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.Tick(time.Second * 3):
+			case <-time.Tick(time.Second):
 				pods, err = p.mainWindow.KuCli.GetPods(ctx, p.namespace)
 				if err != nil {
 					fyne.LogError("get deployments", err)
