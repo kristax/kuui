@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -32,10 +33,13 @@ type Nav struct {
 	navItems            map[string]*v1.Pod
 	onNamespaceSelected func(namespace string)
 	onPodSelected       func(pod *v1.Pod)
+	treeData            binding.StringTree
 }
 
 func NewNav() *Nav {
-	return &Nav{}
+	return &Nav{
+		treeData: binding.NewStringTree(),
+	}
 }
 
 func (u *Nav) Init() error {
@@ -53,19 +57,19 @@ func (u *Nav) Init() error {
 }
 
 func (u *Nav) Build() *fyne.Container {
-	navTree, refresh := u.buildNavTree()
-	defer refresh(u.pods)
-
 	app := fyne.CurrentApp()
 
 	themeDark := app.Preferences().BoolWithFallback(preference.ThemeDark, app.Settings().ThemeVariant() == theme.VariantDark)
+	app.Settings().SetTheme(fas.TernaryOp(themeDark, themes.DarkTheme(), themes.LightTheme()))
 
 	btnTheme := widget.NewButton(fas.TernaryOp(themeDark, "Light", "Dark"), nil)
 	btnReload := widget.NewButton("Reload", nil)
 	navBottom := container.NewGridWithColumns(2, btnReload, btnTheme)
+
+	navTree, refresh := u.buildNav()
+	defer refresh(u.pods)
 	nav := container.NewBorder(nil, navBottom, nil, nil, navTree)
 
-	app.Settings().SetTheme(fas.TernaryOp(themeDark, themes.DarkTheme(), themes.LightTheme()))
 	btnTheme.OnTapped = func() {
 		go func() {
 			themeDark = !themeDark
@@ -93,7 +97,7 @@ func (u *Nav) Build() *fyne.Container {
 	return nav
 }
 
-func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
+func (u *Nav) buildNav() (fyne.CanvasObject, func(pods []v1.Pod)) {
 	var (
 		pods      = u.pods
 		page      = 1
@@ -101,7 +105,7 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 		searchStr = fyne.CurrentApp().Preferences().String(preference.NavSearchStr)
 	)
 
-	var tree = &widget.Tree{}
+	var tree = u.buildTree()
 	txtSearch := widget.NewEntry()
 	btnForward := widget.NewButton("<", nil)
 	btnNext := widget.NewButton(">", nil)
@@ -131,9 +135,7 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 		}
 		txtPage.SetText(fmt.Sprintf("%v", page))
 		lbTotalPage.SetText(fmt.Sprintf("of %d", sumPage))
-		nav.Remove(tree)
-		tree = u.buildTree(pods, page, size)
-		nav.Add(tree)
+		u.refreshData(pods, page, size)
 		nav.Refresh()
 	}
 
@@ -163,42 +165,33 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 	return nav, refreshTreeFunc
 }
 
-func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
-	navIndex := buildTreeData(pods, page, size)
-
+func (u *Nav) buildTree() *widget.Tree {
 	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
-
-	var childUIDs = func(id widget.TreeNodeID) []widget.TreeNodeID {
-		return navIndex[id]
-	}
-	var isBranch = func(id widget.TreeNodeID) bool {
-		_, ok := navIndex[id]
-		return ok
-	}
 	var create = func(b bool) fyne.CanvasObject {
 		if b {
-			return container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.CheckButtonIcon(), nil), widget.NewLabel(""))
+			return container.NewBorder(nil, nil, nil, widget.NewCheck("", nil), widget.NewLabel(""))
 		}
 		return widget.NewLabel("")
 	}
-	var update = func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
+	update := func(item binding.DataItem, b bool, object fyne.CanvasObject) {
 		var lb *widget.Label
+		bs := item.(binding.String)
+		id, _ := bs.Get()
 		if b {
 			border := object.(*fyne.Container)
 			lb = border.Objects[0].(*widget.Label)
-			btn := border.Objects[1].(*widget.Button)
-
+			btn := border.Objects[1].(*widget.Check)
 			contains := lo.Contains(collections, id)
 			if contains {
-				btn.SetIcon(theme.CheckButtonCheckedIcon())
+				btn.SetChecked(true)
 			}
-			btn.OnTapped = u.manageCollection(btn, id, &contains)
+			btn.OnChanged = u.manageCollection(id)
 		} else {
 			lb = object.(*widget.Label)
 		}
 		lb.SetText(id)
 	}
-	tree := widget.NewTree(childUIDs, isBranch, create, update)
+	tree := widget.NewTreeWithData(u.treeData, create, update)
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if t, ok := u.navItems[uid]; ok {
 			var err error
@@ -216,15 +209,12 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	return tree
 }
 
-func (u *Nav) manageCollection(btn *widget.Button, id string, contains *bool) func() {
-	return func() {
-		*contains = !*contains
+func (u *Nav) manageCollection(id string) func(b bool) {
+	return func(b bool) {
 		collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
-		if *contains {
-			btn.SetIcon(theme.CheckButtonCheckedIcon())
+		if b {
 			collections = append(collections, id)
 		} else {
-			btn.SetIcon(theme.CheckButtonIcon())
 			collections = lo.Filter(collections, func(item string, _ int) bool {
 				return item != id
 			})
@@ -237,7 +227,8 @@ func (u *Nav) manageCollection(btn *widget.Button, id string, contains *bool) fu
 	}
 }
 
-func buildTreeData(pods []v1.Pod, page, size int) (navIndex map[string][]string) {
+func (u *Nav) refreshData(pods []v1.Pod, page, size int) {
+	values := make(map[string]string)
 	nsGroup := lo.GroupBy[v1.Pod, string](pods, func(item v1.Pod) string {
 		return item.GetNamespace()
 	})
@@ -260,16 +251,18 @@ func buildTreeData(pods []v1.Pod, page, size int) (navIndex map[string][]string)
 
 	namespaces = namespaces[offset:limit]
 
-	navIndex = map[string][]string{
+	navIndex := map[string][]string{
 		"": namespaces,
 	}
 	for _, namespace := range namespaces {
+		values[namespace] = namespace
 		podNames := lo.Map[v1.Pod, string](nsGroup[namespace], func(item v1.Pod, _ int) string {
+			values[item.GetName()] = item.GetName()
 			return item.GetName()
 		})
 		navIndex[namespace] = append(navIndex[namespace], podNames...)
 	}
-	return
+	u.treeData.Set(navIndex, values)
 }
 
 func (u *Nav) loadResources() error {
