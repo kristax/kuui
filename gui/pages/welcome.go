@@ -57,6 +57,7 @@ func (p *WelcomePage) newList() *widget.List {
 		p.MainWindow.AddTab(collections[id], func(ctx context.Context) fyne.CanvasObject {
 			return namespacePage.Build(ctx)
 		})
+		list.UnselectAll()
 	}
 	p.collectionsData.Set(collections)
 	return list

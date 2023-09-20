@@ -177,7 +177,7 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	}
 	var create = func(b bool) fyne.CanvasObject {
 		if b {
-			return container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.CheckButtonIcon(), nil), widget.NewLabel(""))
+			return container.NewBorder(nil, nil, nil, widget.NewCheck("", nil), widget.NewLabel(""))
 		}
 		return widget.NewLabel("")
 	}
@@ -186,13 +186,12 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 		if b {
 			border := object.(*fyne.Container)
 			lb = border.Objects[0].(*widget.Label)
-			btn := border.Objects[1].(*widget.Button)
-
+			btn := border.Objects[1].(*widget.Check)
 			contains := lo.Contains(collections, id)
 			if contains {
-				btn.SetIcon(theme.CheckButtonCheckedIcon())
+				btn.SetChecked(true)
 			}
-			btn.OnTapped = u.manageCollection(btn, id, &contains)
+			btn.OnChanged = u.manageCollection(id)
 		} else {
 			lb = object.(*widget.Label)
 		}
@@ -216,15 +215,12 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	return tree
 }
 
-func (u *Nav) manageCollection(btn *widget.Button, id string, contains *bool) func() {
-	return func() {
-		*contains = !*contains
+func (u *Nav) manageCollection(id string) func(b bool) {
+	return func(b bool) {
 		collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
-		if *contains {
-			btn.SetIcon(theme.CheckButtonCheckedIcon())
+		if b {
 			collections = append(collections, id)
 		} else {
-			btn.SetIcon(theme.CheckButtonIcon())
 			collections = lo.Filter(collections, func(item string, _ int) bool {
 				return item != id
 			})
