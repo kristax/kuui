@@ -6,14 +6,12 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kristax/kuui/gui/channels"
 	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/gui/widgets"
 	"github.com/kristax/kuui/kucli"
 	"github.com/kristax/kuui/streamer"
-	"github.com/kristax/kuui/themes"
 	"github.com/kristax/kuui/util/fas"
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
@@ -52,48 +50,12 @@ func (u *Nav) Init() error {
 	return u.loadResources()
 }
 
-func (u *Nav) Build() *fyne.Container {
-	navTree, refresh := u.buildNavTree()
-	defer refresh(u.pods)
-
-	app := fyne.CurrentApp()
-
-	themeDark := app.Preferences().BoolWithFallback(preference.ThemeDark, app.Settings().ThemeVariant() == theme.VariantDark)
-
-	btnTheme := widget.NewButton(fas.TernaryOp(themeDark, "Light", "Dark"), nil)
-	btnReload := widget.NewButton("Reload", nil)
-	navBottom := container.NewGridWithColumns(2, btnReload, btnTheme)
-	nav := container.NewBorder(nil, navBottom, nil, nil, navTree)
-
-	app.Settings().SetTheme(fas.TernaryOp(themeDark, themes.DarkTheme(), themes.LightTheme()))
-	btnTheme.OnTapped = func() {
-		go func() {
-			themeDark = !themeDark
-			app.Preferences().SetBool(preference.ThemeDark, themeDark)
-			if themeDark {
-				app.Settings().SetTheme(themes.DarkTheme())
-				btnTheme.SetText("Light")
-			} else {
-				app.Settings().SetTheme(themes.LightTheme())
-				btnTheme.SetText("Dark")
-			}
-		}()
-	}
-
-	btnReload.OnTapped = func() {
-		btnReload.Disable()
-		defer btnReload.Enable()
-		err := u.loadResources()
-		if err != nil {
-			panic(err)
-		}
-		refresh(u.pods)
-	}
-
-	return nav
+func (u *Nav) Build() fyne.CanvasObject {
+	navTree := u.buildNavTree()
+	return navTree
 }
 
-func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
+func (u *Nav) buildNavTree() fyne.CanvasObject {
 	var (
 		pods      = u.pods
 		page      = 1
@@ -110,7 +72,8 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 	txtPage.SetText(fmt.Sprintf("%v", page))
 	lbTotalPage := widget.NewLabel("")
 	compPage := container.NewGridWithColumns(2, txtPage, lbTotalPage)
-	pagination := container.NewBorder(nil, nil, btnForward, btnNext, compPage)
+	btnReload := widget.NewButton("Reload", nil)
+	pagination := container.NewBorder(nil, btnReload, btnForward, btnNext, compPage)
 	nav := container.NewBorder(txtSearch, pagination, nil, nil, tree)
 
 	var refreshTreeFunc = func(pods []v1.Pod) {
@@ -136,6 +99,17 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 		nav.Add(tree)
 		nav.Refresh()
 	}
+	defer refreshTreeFunc(u.pods)
+
+	btnReload.OnTapped = func() {
+		btnReload.Disable()
+		defer btnReload.Enable()
+		err := u.loadResources()
+		if err != nil {
+			panic(err)
+		}
+		refreshTreeFunc(u.pods)
+	}
 
 	txtPage.OnChanged = func(s string) {
 		page, _ = strconv.Atoi(s)
@@ -160,7 +134,7 @@ func (u *Nav) buildNavTree() (fyne.CanvasObject, func(pods []v1.Pod)) {
 		refreshTreeFunc(u.pods)
 	}
 
-	return nav, refreshTreeFunc
+	return nav
 }
 
 func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
@@ -177,25 +151,23 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	}
 	var create = func(b bool) fyne.CanvasObject {
 		if b {
-			return container.NewBorder(nil, nil, nil, widget.NewCheck("", nil), widget.NewLabel(""))
+			return widget.NewCheck("", nil)
 		}
 		return widget.NewLabel("")
 	}
 	var update = func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
-		var lb *widget.Label
 		if b {
-			border := object.(*fyne.Container)
-			lb = border.Objects[0].(*widget.Label)
-			btn := border.Objects[1].(*widget.Check)
+			btn := object.(*widget.Check)
+			btn.Text = id
 			contains := lo.Contains(collections, id)
 			if contains {
 				btn.SetChecked(true)
 			}
 			btn.OnChanged = u.manageCollection(id)
+			btn.Refresh()
 		} else {
-			lb = object.(*widget.Label)
+			object.(*widget.Label).SetText(id)
 		}
-		lb.SetText(id)
 	}
 	tree := widget.NewTree(childUIDs, isBranch, create, update)
 	tree.OnSelected = func(uid widget.TreeNodeID) {

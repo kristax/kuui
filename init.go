@@ -17,6 +17,7 @@ func init() {
 		pages.NewNav(),
 		pages.NewDiffPage(),
 		pages.NewRemoveDupPage(),
+		pages.NewThemePage(),
 		streamer.NewStreamer(),
 	)
 }
