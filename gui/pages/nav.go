@@ -151,23 +151,25 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	}
 	var create = func(b bool) fyne.CanvasObject {
 		if b {
-			return widget.NewCheck("", nil)
+			return container.NewBorder(nil, nil, nil, widget.NewCheck("", nil), widget.NewLabel(""))
 		}
 		return widget.NewLabel("")
 	}
 	var update = func(id widget.TreeNodeID, b bool, object fyne.CanvasObject) {
+		var lb *widget.Label
 		if b {
-			btn := object.(*widget.Check)
-			btn.Text = id
+			border := object.(*fyne.Container)
+			lb = border.Objects[0].(*widget.Label)
+			btn := border.Objects[1].(*widget.Check)
 			contains := lo.Contains(collections, id)
 			if contains {
 				btn.SetChecked(true)
 			}
 			btn.OnChanged = u.manageCollection(id)
-			btn.Refresh()
 		} else {
-			object.(*widget.Label).SetText(id)
+			lb = object.(*widget.Label)
 		}
+		lb.SetText(id)
 	}
 	tree := widget.NewTree(childUIDs, isBranch, create, update)
 	tree.OnSelected = func(uid widget.TreeNodeID) {
