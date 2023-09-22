@@ -13,7 +13,9 @@ import (
 	"github.com/samber/lo"
 	appV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
+	"os/exec"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -87,34 +89,51 @@ func (p *NamespacePage) buildDeploymentCard(ctx context.Context) *widget.Card {
 		return nil
 	}
 
+	var scaleReplicateFn = func(deployment appV1.Deployment, replica int) {
+		result, err := p.mainWindow.KuCli.GetDeployment(ctx, p.namespace, deployment.GetName())
+		if err != nil {
+			fyne.LogError("get deployment", err)
+			return
+		}
+		i32 := int32(replica)
+		result.Spec.Replicas = &i32
+		result, err = p.mainWindow.KuCli.UpdateDeployment(ctx, p.namespace, result)
+		if err != nil {
+			fyne.LogError("update deployment", err)
+			return
+		}
+	}
 	var onSelect = func(id widget.TableCellID, table *widgets.HoverTable, event *desktop.MouseEvent) {
-		widget.NewPopUpMenu(fyne.NewMenu("fn",
-			fyne.NewMenuItemSeparator(),
-			fyne.NewMenuItem("scale", func() {
-				deployment := deployments[id.Row]
-				sr := fmt.Sprintf("%d", *deployment.Spec.Replicas)
-				txtScale := widgets.NewNumericalEntry()
-				txtScale.SetText(sr)
-				box := container.NewVBox(
-					container.NewGridWithColumns(2, widget.NewLabel("Current Replicas: "), widget.NewLabel(sr)),
-					container.NewGridWithColumns(2, widget.NewLabel("Scale To: "), txtScale),
-				)
-				dialog.ShowCustomConfirm("Scale Replicas", "Scale", "Cancel", box, func(b bool) {
-					replica, _ := strconv.Atoi(txtScale.Text)
-					i32 := int32(replica)
-					result, err := p.mainWindow.KuCli.GetDeployment(ctx, p.namespace, deployment.GetName())
+		deployment := deployments[id.Row]
+		widget.NewPopUpMenu(
+			fyne.NewMenu("fn",
+				fyne.NewMenuItemSeparator(),
+				fyne.NewMenuItem("Scale Replicate", func() {
+					sr := fmt.Sprintf("%d", *deployment.Spec.Replicas)
+					txtScale := widgets.NewNumericalEntry()
+					txtScale.SetText(sr)
+					box := container.NewVBox(
+						container.NewGridWithColumns(2, widget.NewLabel("Current Replicas: "), widget.NewLabel(sr)),
+						container.NewGridWithColumns(2, widget.NewLabel("Scale To: "), txtScale),
+					)
+					dialog.ShowCustomConfirm("Scale Replicas", "Scale", "Cancel", box, func(b bool) {
+						replica, _ := strconv.Atoi(txtScale.Text)
+						scaleReplicateFn(deployment, replica)
+					}, p.mainWindow.Content())
+				}),
+				fyne.NewMenuItem("Scale to 1", func() {
+					scaleReplicateFn(deployment, 1)
+				}),
+				fyne.NewMenuItem("Scale to 3", func() {
+					scaleReplicateFn(deployment, 3)
+				}),
+				fyne.NewMenuItem("Open in browser", func() {
+					err = openInBrowser(fmt.Sprintf("https://kubesphere.dev.iglooinsure.com/clusters/default/projects/%s/pods", p.namespace))
 					if err != nil {
-						fyne.LogError("get deployment", err)
-						return
+						fyne.LogError("open in browser", err)
 					}
-					result.Spec.Replicas = &i32
-					result, err = p.mainWindow.KuCli.UpdateDeployment(ctx, p.namespace, result)
-					if err != nil {
-						fyne.LogError("update deployment", err)
-						return
-					}
-				}, p.mainWindow.Content())
-			})),
+				}),
+			),
 			fyne.CurrentApp().Driver().CanvasForObject(table)).
 			ShowAtPosition(event.AbsolutePosition)
 		table.Unselect(id)
@@ -395,4 +414,22 @@ func fmtDuration(duration time.Duration) string {
 		t = append(t, fmt.Sprintf("%ds", sec))
 	}
 	return strings.Join(t, "")
+}
+
+var commands = map[string][]string{
+	"windows": {"cmd", "/c start"},
+	"darwin":  {"open"},
+	"linux":   {"bash", "xdg-open"},
+}
+
+func openInBrowser(uri string) error {
+	run, ok := commands[runtime.GOOS]
+	program := run[0]
+	args := append(run[1:], uri)
+	if !ok {
+		return fmt.Errorf("don't know how to open things on %s platform", runtime.GOOS)
+	}
+
+	cmd := exec.Command(program, strings.Join(args, " "))
+	return cmd.Start()
 }
