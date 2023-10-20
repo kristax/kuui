@@ -53,7 +53,8 @@ func (p *WelcomePage) newList() *widget.List {
 		object.(*widget.Label).SetText(s)
 	})
 	list.OnSelected = func(id widget.ListItemID) {
-		namespacePage := newNamespace(p.MainWindow, collections[id])
+		value, _ := p.collectionsData.GetValue(id)
+		namespacePage := newNamespace(p.MainWindow, value)
 		p.MainWindow.AddTab(collections[id], func(ctx context.Context) fyne.CanvasObject {
 			return namespacePage.Build(ctx)
 		})
