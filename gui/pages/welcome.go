@@ -55,7 +55,7 @@ func (p *WelcomePage) newList() *widget.List {
 	list.OnSelected = func(id widget.ListItemID) {
 		value, _ := p.collectionsData.GetValue(id)
 		namespacePage := newNamespace(p.MainWindow, value)
-		p.MainWindow.AddTab(collections[id], func(ctx context.Context) fyne.CanvasObject {
+		p.MainWindow.AddTab(value, func(ctx context.Context) fyne.CanvasObject {
 			return namespacePage.Build(ctx)
 		})
 		list.UnselectAll()
