@@ -3,6 +3,7 @@ package streamer
 import "context"
 
 type streamer struct {
+	Listeners []Listener `wire:""`
 	listeners map[string][]OnCallFn
 }
 
@@ -12,12 +13,17 @@ func NewStreamer() Client {
 	}
 }
 
-func (s *streamer) Register(l Listener) {
-	s.listeners[l.Channel()] = append(s.listeners[l.Channel()], l.OnCall)
+func (s *streamer) Init() error {
+	for _, listener := range s.Listeners {
+		for _, channel := range listener.Channel() {
+			s.listeners[channel] = append(s.listeners[channel], listener.OnCall)
+		}
+	}
+	return nil
 }
 
 func (s *streamer) Send(ctx context.Context, channel string, msg any) {
 	for _, fn := range s.listeners[channel] {
-		fn(ctx, msg)
+		go fn(ctx, channel, msg)
 	}
 }

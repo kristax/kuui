@@ -3,10 +3,11 @@ package pages
 import (
 	"context"
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kristax/kuui/gui/channels"
-	"github.com/kristax/kuui/gui/preference"
 	"github.com/kristax/kuui/kucli"
 	"github.com/kristax/kuui/streamer"
 )
@@ -15,17 +16,17 @@ type WelcomePage struct {
 	MainWindow *MainWindow     `wire:""`
 	KuCli      kucli.KuCli     `wire:""`
 	Streamer   streamer.Client `wire:""`
+	Collection *collection     `wire:""`
 
 	collectionsData binding.StringList
 }
 
-func (p *WelcomePage) Channel() string {
-	return channels.CollectionsUpdate
+func (p *WelcomePage) Channel() []string {
+	return []string{channels.CollectionsUpdate}
 }
 
-func (p *WelcomePage) OnCall(ctx context.Context, msg any) {
-	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
-	p.collectionsData.Set(collections)
+func (p *WelcomePage) OnCall(ctx context.Context, channel string, msg any) {
+	p.collectionsData.Set(p.Collection.GetCollections())
 }
 
 func NewWelcomePage() *WelcomePage {
@@ -34,23 +35,24 @@ func NewWelcomePage() *WelcomePage {
 	}
 }
 
-func (p *WelcomePage) Init() error {
-	p.Streamer.Register(p)
-	return nil
-}
-
 func (p *WelcomePage) Build() fyne.CanvasObject {
 	card := widget.NewCard("Bookmarks", "", p.newList())
 	return card
 }
 
 func (p *WelcomePage) newList() *widget.List {
-	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
 	list := widget.NewListWithData(p.collectionsData, func() fyne.CanvasObject {
-		return widget.NewLabel("")
+		return container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.DeleteIcon(), nil), widget.NewLabel(""))
+		//return widget.NewLabel("")
 	}, func(item binding.DataItem, object fyne.CanvasObject) {
 		s, _ := item.(binding.String).Get()
-		object.(*widget.Label).SetText(s)
+		border := object.(*fyne.Container)
+		label := border.Objects[0].(*widget.Label)
+		btn := border.Objects[1].(*widget.Button)
+		label.SetText(s)
+		btn.OnTapped = func() {
+			p.Collection.Remove(s)
+		}
 	})
 	list.OnSelected = func(id widget.ListItemID) {
 		value, _ := p.collectionsData.GetValue(id)
@@ -60,6 +62,6 @@ func (p *WelcomePage) newList() *widget.List {
 		})
 		list.UnselectAll()
 	}
-	p.collectionsData.Set(collections)
+	p.collectionsData.Set(p.Collection.GetCollections())
 	return list
 }

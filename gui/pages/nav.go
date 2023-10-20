@@ -25,11 +25,21 @@ type Nav struct {
 	MainWindow *MainWindow     `wire:""`
 	KuCli      kucli.KuCli     `wire:""`
 	Streamer   streamer.Client `wire:""`
+	Collection *collection     `wire:""`
 
 	pods                []v1.Pod
 	navItems            map[string]*v1.Pod
 	onNamespaceSelected func(namespace string)
 	onPodSelected       func(pod *v1.Pod)
+	refreshTreeFunc     func(pods []v1.Pod)
+}
+
+func (u *Nav) Channel() []string {
+	return []string{channels.CollectionsUpdate}
+}
+
+func (u *Nav) OnCall(ctx context.Context, channel string, msg any) {
+	u.refreshTreeFunc(u.pods)
 }
 
 func NewNav() *Nav {
@@ -76,7 +86,7 @@ func (u *Nav) buildNavTree() fyne.CanvasObject {
 	pagination := container.NewBorder(nil, btnReload, btnForward, btnNext, compPage)
 	nav := container.NewBorder(txtSearch, pagination, nil, nil, tree)
 
-	var refreshTreeFunc = func(pods []v1.Pod) {
+	u.refreshTreeFunc = func(pods []v1.Pod) {
 		if searchStr != "" {
 			pods = lo.Filter(pods, func(item v1.Pod, _ int) bool {
 				return strings.Contains(item.GetNamespace(), searchStr) || strings.Contains(item.GetName(), searchStr)
@@ -99,7 +109,7 @@ func (u *Nav) buildNavTree() fyne.CanvasObject {
 		nav.Add(tree)
 		nav.Refresh()
 	}
-	defer refreshTreeFunc(u.pods)
+	defer u.refreshTreeFunc(u.pods)
 
 	btnReload.OnTapped = func() {
 		btnReload.Disable()
@@ -108,21 +118,21 @@ func (u *Nav) buildNavTree() fyne.CanvasObject {
 		if err != nil {
 			panic(err)
 		}
-		refreshTreeFunc(u.pods)
+		u.refreshTreeFunc(u.pods)
 	}
 
 	txtPage.OnChanged = func(s string) {
 		page, _ = strconv.Atoi(s)
-		refreshTreeFunc(pods)
+		u.refreshTreeFunc(pods)
 	}
 
 	btnNext.OnTapped = func() {
 		page++
-		refreshTreeFunc(pods)
+		u.refreshTreeFunc(pods)
 	}
 	btnForward.OnTapped = func() {
 		page--
-		refreshTreeFunc(pods)
+		u.refreshTreeFunc(pods)
 	}
 
 	txtSearch.SetPlaceHolder("search")
@@ -131,7 +141,7 @@ func (u *Nav) buildNavTree() fyne.CanvasObject {
 		page = 1
 		searchStr = s
 		fyne.CurrentApp().Preferences().SetString(preference.NavSearchStr, searchStr)
-		refreshTreeFunc(u.pods)
+		u.refreshTreeFunc(u.pods)
 	}
 
 	return nav
@@ -140,7 +150,7 @@ func (u *Nav) buildNavTree() fyne.CanvasObject {
 func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 	navIndex := buildTreeData(pods, page, size)
 
-	collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
+	collections := u.Collection.GetCollections()
 
 	var childUIDs = func(id widget.TreeNodeID) []widget.TreeNodeID {
 		return navIndex[id]
@@ -191,19 +201,11 @@ func (u *Nav) buildTree(pods []v1.Pod, page, size int) *widget.Tree {
 
 func (u *Nav) manageCollection(id string) func(b bool) {
 	return func(b bool) {
-		collections := fyne.CurrentApp().Preferences().StringList(preference.NSCollections)
 		if b {
-			collections = append(collections, id)
+			u.Collection.Add(id)
 		} else {
-			collections = lo.Filter(collections, func(item string, _ int) bool {
-				return item != id
-			})
+			u.Collection.Remove(id)
 		}
-		sort.Slice(collections, func(i, j int) bool {
-			return collections[i] < collections[j]
-		})
-		fyne.CurrentApp().Preferences().SetStringList(preference.NSCollections, collections)
-		u.Streamer.Send(context.Background(), channels.CollectionsUpdate, nil)
 	}
 }
 
