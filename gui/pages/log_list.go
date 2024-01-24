@@ -24,8 +24,9 @@ type LogListPage struct {
 
 	logDetail *LogDetailPage
 
-	list    *fyne.Container
-	vScroll *container.Scroll
+	list             *fyne.Container
+	vScroll          *container.Scroll
+	maxLogCharacters int
 	//minScrollDuration time.Duration
 
 	tbiPause  *widget.ToolbarAction
@@ -46,11 +47,12 @@ func newLogListPage(mainWindow *MainWindow, pods []*v1.Pod) *LogListPage {
 	list := container.NewVBox()
 	isPrint := fyne.CurrentApp().Preferences().Bool(preference.IsPrint)
 	return &LogListPage{
-		mainWindow: mainWindow,
-		pods:       pods,
-		list:       list,
-		logDetail:  newLogDetailPage(mainWindow),
-		vScroll:    container.NewScroll(list),
+		mainWindow:       mainWindow,
+		pods:             pods,
+		list:             list,
+		logDetail:        newLogDetailPage(mainWindow),
+		vScroll:          container.NewScroll(list),
+		maxLogCharacters: 500,
 		//minScrollDuration: time.Millisecond,
 		tbiPause:  widget.NewToolbarAction(theme.MediaPauseIcon(), nil),
 		tbiDelete: widget.NewToolbarAction(theme.MediaStopIcon(), nil),
@@ -141,19 +143,33 @@ func (p *LogListPage) Build(ctx context.Context) fyne.CanvasObject {
 func (p *LogListPage) run(ctx context.Context) {
 	for _, pod := range p.pods {
 		go func(pod *v1.Pod) {
+			var prefix = fas.TernaryOp(len(p.pods) > 1, pod.GetName()+" | ", "")
 			ch, err := p.mainWindow.KuCli.TailfLogs(ctx, pod.GetNamespace(), pod.GetName(), int64(p.line/len(p.pods)))
 			if err != nil {
 				fyne.LogError("tail logs failed", err)
 				p.logCh <- fmt.Sprintf("tail logs failed: %v", err)
 				return
 			}
+			var (
+				sb         = strings.Builder{}
+				groupStart = false
+			)
 			for s := range ch {
-				var els []string
-				if len(p.pods) > 1 {
-					els = append(els, pod.GetName())
+				if s == "{" && !groupStart {
+					groupStart = true
 				}
-				els = append(els, s)
-				p.logCh <- strings.Join(els, " | ")
+				if groupStart {
+					sb.WriteString(s)
+					sb.WriteString("\n")
+				}
+				if s == "}" && groupStart {
+					groupStart = false
+					s = sb.String()
+					sb = strings.Builder{}
+				}
+				if !groupStart {
+					p.logCh <- prefix + s
+				}
 			}
 		}(pod)
 	}
@@ -179,18 +195,32 @@ func (p *LogListPage) reloadLog(ctx context.Context) {
 	p.list.RemoveAll()
 	//query all logs
 	for _, pod := range p.pods {
+		var prefix = fas.TernaryOp(len(p.pods) > 1, pod.GetName()+" | ", "")
 		logs, err := p.mainWindow.KuCli.TailLogs(ctx, pod.GetNamespace(), pod.GetName(), int64(p.line/len(p.pods)))
 		if err != nil {
 			p.logCh <- fmt.Sprintf("Tail Logs failed: %v", err)
 			return
 		}
-		for _, log := range logs {
-			var els []string
-			if len(p.pods) > 1 {
-				els = append(els, pod.GetName())
+		var (
+			sb         = strings.Builder{}
+			groupStart = false
+		)
+		for _, s := range logs {
+			if s == "{" && !groupStart {
+				groupStart = true
 			}
-			els = append(els, log)
-			p.logCh <- strings.Join(els, " | ")
+			if groupStart {
+				sb.WriteString(s)
+				sb.WriteString("\n")
+			}
+			if s == "}" && groupStart {
+				groupStart = false
+				s = sb.String()
+				sb = strings.Builder{}
+			}
+			if !groupStart {
+				p.logCh <- prefix + s
+			}
 		}
 	}
 }
@@ -201,22 +231,26 @@ func (p *LogListPage) addItem(txt string) {
 	//start := time.Now()
 	if p.isPrint {
 		os.Stdout.WriteString(txt + "\n")
-	}
-	if compile.MatchString(txt) {
-		txt = compile.ReplaceAllString(txt, "**")
-	}
-	//txt = strings.ReplaceAll(txt, " ", "\n")
-	content := widgets.NewTappableLabel(txt)
-	if len(txt) < 2000 {
+	} else {
+		if compile.MatchString(txt) {
+			txt = compile.ReplaceAllString(txt, "**")
+		}
+		//txt = strings.ReplaceAll(txt, " ", "\n")
+		var content *widgets.TappableLabel
+		if len(txt) > p.maxLogCharacters {
+			content = widgets.NewTappableLabel(txt[:p.maxLogCharacters] + "...")
+		} else {
+			content = widgets.NewTappableLabel(txt)
+		}
 		content.Wrapping = fyne.TextWrapBreak
+		content.OnTapped = p.contentTapped(txt)
+		p.list.Add(content)
+		//dur := time.Now().Sub(start)
+		//if sub := p.minScrollDuration - dur; sub > 0 {
+		//	time.Sleep(sub)
+		//}
+		p.vScroll.ScrollToBottom()
 	}
-	content.OnTapped = p.contentTapped(txt)
-	p.list.Add(content)
-	//dur := time.Now().Sub(start)
-	//if sub := p.minScrollDuration - dur; sub > 0 {
-	//	time.Sleep(sub)
-	//}
-	p.vScroll.ScrollToBottom()
 }
 
 func (p *LogListPage) contentTapped(txt string) func() {
